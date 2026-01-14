@@ -1,13 +1,11 @@
 'use client';
 
-import type { Country, DateRangeKey } from "../types";
+import { RotateCcw, RefreshCw } from "lucide-react";
+import type { DateRangeKey } from "../types";
 
 type JobLinksFiltersProps = {
   search: string;
   onSearchChange: (value: string) => void;
-  countries: Country[];
-  selectedCountryId: string;
-  onCountryChange: (value: string) => void;
   range: DateRangeKey;
   onRangeChange: (value: DateRangeKey) => void;
   pageSize: number;
@@ -29,9 +27,6 @@ const pageSizeOptions = [25, 50, 100];
 export default function JobLinksFilters({
   search,
   onSearchChange,
-  countries,
-  selectedCountryId,
-  onCountryChange,
   range,
   onRangeChange,
   pageSize,
@@ -41,46 +36,28 @@ export default function JobLinksFilters({
   loading
 }: JobLinksFiltersProps) {
   return (
-    <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)]">
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_1fr_0.7fr_auto] lg:items-end">
+    <section className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50/30 p-6 shadow-sm">
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_0.7fr_auto] lg:items-end">
         <label className="space-y-2">
-          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">
             Search
           </span>
           <input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search by URL or domain"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+            placeholder="Search by URL or domain..."
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 shadow-sm outline-none ring-1 ring-transparent transition-all duration-200 placeholder:text-slate-400 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-400/20 hover:border-slate-300"
           />
         </label>
 
         <label className="space-y-2">
-          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-            Country
-          </span>
-          <select
-            value={selectedCountryId}
-            onChange={(event) => onCountryChange(event.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-          >
-            <option value="all">All countries</option>
-            {countries.map((country) => (
-              <option key={country.id} value={String(country.id)}>
-                {country.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="space-y-2">
-          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-            Date range
+          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">
+            Date Range
           </span>
           <select
             value={range}
             onChange={(event) => onRangeChange(event.target.value as DateRangeKey)}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 shadow-sm outline-none ring-1 ring-transparent transition-all duration-200 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-400/20 hover:border-slate-300"
           >
             {rangeOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -91,13 +68,13 @@ export default function JobLinksFilters({
         </label>
 
         <label className="space-y-2">
-          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-            Page size
+          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">
+            Page Size
           </span>
           <select
             value={String(pageSize)}
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 shadow-sm outline-none ring-1 ring-transparent transition-all duration-200 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-400/20 hover:border-slate-300"
           >
             {pageSizeOptions.map((option) => (
               <option key={option} value={String(option)}>
@@ -111,17 +88,23 @@ export default function JobLinksFilters({
           <button
             type="button"
             onClick={onReset}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:bg-slate-50"
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 hover:bg-slate-50 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
+            aria-label="Reset filters"
           >
-            Reset
+            <RotateCcw className="h-4 w-4" />
           </button>
           <button
             type="button"
             onClick={onRefresh}
             disabled={loading}
-            className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+            className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white shadow-sm transition-all duration-200 hover:from-emerald-700 hover:to-teal-700 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-sm"
+            aria-label="Refresh"
           >
-            {loading ? "Loading..." : "Refresh"}
+            {loading ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
           </button>
         </div>
       </div>

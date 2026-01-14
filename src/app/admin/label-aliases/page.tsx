@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Pencil, Save, XCircle, Plus, Trash2 } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/useAuth";
 import AdminShell from "../../../components/AdminShell";
@@ -185,9 +186,10 @@ export default function LabelAliasesPage() {
                 onClick={() => {
                   setTimeout(() => rightInputRef.current?.focus(), 10);
                 }}
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-800 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                aria-label="Add tag"
               >
-                + Add tag
+                <Plus className="h-4 w-4" />
               </button>
             </div>
             <div className="divide-y divide-slate-100">
@@ -229,9 +231,10 @@ export default function LabelAliasesPage() {
                   <button
                     onClick={() => addAlias(selectedKey, newAliasLeft)}
                     disabled={savingId?.startsWith("new-")}
-                    className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-60"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-60"
+                    aria-label="Add tag"
                   >
-                    Add
+                    <Plus className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -258,9 +261,10 @@ export default function LabelAliasesPage() {
                   <button
                     onClick={() => addAlias(selectedKey, newAliasRight)}
                     disabled={savingId?.startsWith("new-")}
-                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-60"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-60"
+                    aria-label="Add tag"
                   >
-                    Add
+                    <Plus className="h-4 w-4" />
                   </button>
                 </div>
               )}
@@ -298,15 +302,17 @@ export default function LabelAliasesPage() {
                             <button
                               onClick={() => tag.id && saveEdit(tag.id)}
                               disabled={savingId === tag.id}
-                              className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-60"
+                              aria-label="Save changes"
                             >
-                              Save
+                              <Save className="h-4 w-4" />
                             </button>
                             <button
                               onClick={cancelEdit}
-                              className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-800 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                              aria-label="Cancel editing"
                             >
-                              Cancel
+                              <XCircle className="h-4 w-4" />
                             </button>
                           </>
                         ) : (
@@ -322,16 +328,18 @@ export default function LabelAliasesPage() {
                                   setEditKey(selectedKey);
                                   setEditingId(tag.id ?? null);
                                 }}
-                                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-800 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                                aria-label="Edit tag"
                               >
-                                Edit
+                                <Pencil className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={() => tag.id && removeAlias(tag.id)}
                                 disabled={savingId === tag.id}
-                                className="rounded-full border border-red-200 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-700 transition hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:opacity-60"
+                                aria-label="Delete tag"
                               >
-                                Delete
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           </>

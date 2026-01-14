@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Pencil, Save, XCircle, Users, ChevronDown, TrendingUp, Clock, AlertCircle, CheckCircle2, Calendar, Target, BarChart3, UserCheck } from 'lucide-react';
 import TopNav from '../../components/TopNav';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/useAuth';
@@ -10,11 +11,10 @@ import { ClientUser } from '../../lib/auth';
 
 type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
 type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
-type TaskApprovalStatus = 'pending' | 'approved' | 'rejected';
 
 type TaskAssignee = {
   id: string;
-  name: string;
+  userName: string;
   email?: string | null;
   avatarUrl?: string | null;
 };
@@ -22,10 +22,9 @@ type TaskAssignee = {
 type Task = {
   id: string;
   title: string;
-  summary?: string | null;
+  detail?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
-  approvalStatus?: TaskApprovalStatus;
   dueDate: string | null;
   assignees: TaskAssignee[];
   project?: string | null;
@@ -36,6 +35,23 @@ type Task = {
   createdAt: string;
   rejectionReason?: string | null;
 };
+
+// Temporary adapter: Backend still uses "summary", frontend uses "detail"
+// TODO: Remove these functions once backend is updated to use "detail"
+function taskFromBackend(task: any): Task {
+  return {
+    ...task,
+    detail: task.summary ?? task.detail ?? null,
+  };
+}
+
+function taskToBackend(payload: any): any {
+  const { detail, ...rest } = payload;
+  return {
+    ...rest,
+    summary: detail,
+  };
+}
 
 const STATUS_STYLES: Record<TaskStatus, { label: string; chip: string; dot: string }> = {
   todo: {
@@ -79,26 +95,12 @@ const PRIORITY_STYLES: Record<TaskPriority, { label: string; chip: string }> = {
   },
 };
 
-const APPROVAL_STYLES: Record<TaskApprovalStatus, { label: string; chip: string }> = {
-  pending: {
-    label: 'Awaiting approval',
-    chip: 'border border-amber-200 bg-amber-50 text-amber-700',
-  },
-  approved: {
-    label: 'Approved',
-    chip: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
-  },
-  rejected: {
-    label: 'Rejected',
-    chip: 'border border-rose-200 bg-rose-50 text-rose-700',
-  },
-};
 
 const PRIORITY_ORDER: TaskPriority[] = ['urgent', 'high', 'medium', 'low'];
 
 const DEFAULT_TASK_DRAFT = {
   title: '',
-  summary: '',
+  detail: '',
   priority: 'medium' as TaskPriority,
   dueDate: '',
   project: '',
@@ -211,7 +213,7 @@ function buildDeadlineBadge(task: Task, today: Date) {
 function formatAssignees(assignees: TaskAssignee[]) {
   const cleaned = assignees
     .map((assignee) => {
-      const name = assignee.name?.trim();
+      const name = assignee.userName?.trim();
       const email = assignee.email?.trim();
       return name || email || '';
     })
@@ -282,15 +284,15 @@ function StatCard({
   );
 }
 
+type SidebarView = 'dashboard' | 'mine' | 'all' | 'todo' | 'in_progress' | 'in_review' | 'done' | 'done_requests' | 'assign_requests';
+
 export default function TasksPage() {
   const router = useRouter();
   const { user, token, loading } = useAuth();
+  const [sidebarView, setSidebarView] = useState<SidebarView>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | TaskPriority>('all');
   const [sortKey, setSortKey] = useState<'due' | 'priority' | 'created'>('priority');
-  const [showDone, setShowDone] = useState(true);
-  const [showAssignedToMe, setShowAssignedToMe] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState('');
@@ -304,6 +306,8 @@ export default function TasksPage() {
   const [createError, setCreateError] = useState('');
   const [createSuccess, setCreateSuccess] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
+  const [assigneesDropdownOpen, setAssigneesDropdownOpen] = useState(false);
+  const assigneesDropdownRef = useRef<HTMLDivElement>(null);
   const [requestAssigneeIds, setRequestAssigneeIds] = useState<string[]>([]);
   const [requestSaving, setRequestSaving] = useState(false);
   const [requestError, setRequestError] = useState('');
@@ -319,7 +323,7 @@ export default function TasksPage() {
   const [adminEditOpen, setAdminEditOpen] = useState(false);
   const [adminEditDraft, setAdminEditDraft] = useState({
     dueDate: '',
-    summary: '',
+    detail: '',
     notes: '',
   });
   const [adminEditSaving, setAdminEditSaving] = useState(false);
@@ -334,6 +338,17 @@ export default function TasksPage() {
   const [doneError, setDoneError] = useState('');
   const [doneSuccess, setDoneSuccess] = useState('');
   const isAdmin = user?.role === 'ADMIN';
+  const [doneRequests, setDoneRequests] = useState<any[]>([]);
+  const [doneRequestsLoading, setDoneRequestsLoading] = useState(false);
+  const [assignRequests, setAssignRequests] = useState<any[]>([]);
+  const [assignRequestsLoading, setAssignRequestsLoading] = useState(false);
+  const [doneRequestsSearch, setDoneRequestsSearch] = useState('');
+  const [doneRequestsSortBy, setDoneRequestsSortBy] = useState<'who' | 'when'>('when');
+  const [assignRequestsSearch, setAssignRequestsSearch] = useState('');
+  const [assignRequestsSortBy, setAssignRequestsSortBy] = useState<'who' | 'when' | 'task'>('when');
+  const [rejectReasonModalOpen, setRejectReasonModalOpen] = useState(false);
+  const [rejectReasonDraft, setRejectReasonDraft] = useState('');
+  const [rejectingRequestId, setRejectingRequestId] = useState<string | null>(null);
   const isManager = user?.role === 'MANAGER';
   const canCreate = isAdmin || isManager;
 
@@ -349,8 +364,8 @@ export default function TasksPage() {
     setTasksLoading(true);
     setTasksError('');
     try {
-      const data = await api<Task[]>('/tasks', undefined, token);
-      setTasks(Array.isArray(data) ? data : []);
+      const data = await api<any[]>('/tasks', undefined, token);
+      setTasks(Array.isArray(data) ? data.map(taskFromBackend) : []);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load tasks.';
       setTasksError(message);
@@ -386,6 +401,43 @@ export default function TasksPage() {
     void loadUsers();
   }, [loading, user, token, loadUsers]);
 
+  const loadDoneRequests = useCallback(async () => {
+    if (!token || !isAdmin) return;
+    setDoneRequestsLoading(true);
+    try {
+      const data = await api<any[]>('/tasks/done-requests?status=pending', undefined, token);
+      setDoneRequests(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load done requests:', err);
+      setDoneRequests([]);
+    } finally {
+      setDoneRequestsLoading(false);
+    }
+  }, [token, isAdmin]);
+
+  const loadAssignRequests = useCallback(async () => {
+    if (!token || !isAdmin) return;
+    setAssignRequestsLoading(true);
+    try {
+      const data = await api<any[]>('/tasks/assign-requests?status=pending', undefined, token);
+      setAssignRequests(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load assign requests:', err);
+      setAssignRequests([]);
+    } finally {
+      setAssignRequestsLoading(false);
+    }
+  }, [token, isAdmin]);
+
+  useEffect(() => {
+    if (loading || !user || !token || !isAdmin) return;
+    if (sidebarView === 'done_requests') {
+      void loadDoneRequests();
+    } else if (sidebarView === 'assign_requests') {
+      void loadAssignRequests();
+    }
+  }, [loading, user, token, isAdmin, sidebarView, loadDoneRequests, loadAssignRequests]);
+
   const toggleSelection = (
     setValue: (value: string[] | ((prev: string[]) => string[])) => void,
     id: string,
@@ -417,7 +469,7 @@ export default function TasksPage() {
     const dueDate = createDraft.dueDate || null;
     const payload = {
       title,
-      summary: createDraft.summary.trim() || null,
+      detail: createDraft.detail.trim() || null,
       status: 'todo' as TaskStatus,
       priority: createDraft.priority,
       dueDate,
@@ -432,11 +484,12 @@ export default function TasksPage() {
     };
     setCreateSaving(true);
     try {
-      await api('/tasks', { method: 'POST', body: JSON.stringify(payload) }, token);
+      await api('/tasks', { method: 'POST', body: JSON.stringify(taskToBackend(payload)) }, token);
       setCreateSuccess(
         isAdmin ? 'Task created and assigned.' : 'Task request sent for approval.',
       );
       setCreateDraft({ ...DEFAULT_TASK_DRAFT });
+      setAssigneesDropdownOpen(false);
       setCreateOpen(false);
       await loadTasks();
     } catch (err) {
@@ -563,6 +616,25 @@ export default function TasksPage() {
     }));
   };
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        assigneesDropdownRef.current &&
+        !assigneesDropdownRef.current.contains(event.target as Node)
+      ) {
+        setAssigneesDropdownOpen(false);
+      }
+    };
+
+    if (assigneesDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [assigneesDropdownOpen]);
+
   const toggleAssignDraft = (userId: string) => {
     setAssignDraftIds((prev) =>
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
@@ -606,7 +678,7 @@ export default function TasksPage() {
     if (!isAdmin || !focusedTask) return;
     setAdminEditDraft({
       dueDate: focusedTask.dueDate ?? '',
-      summary: focusedTask.summary?.trim() ?? '',
+      detail: focusedTask.detail?.trim() ?? '',
       notes: focusedTask.notes ?? '',
     });
     setAdminEditOpen(true);
@@ -619,7 +691,7 @@ export default function TasksPage() {
     if (focusedTask) {
       setAdminEditDraft({
         dueDate: focusedTask.dueDate ?? '',
-        summary: focusedTask.summary?.trim() ?? '',
+        detail: focusedTask.detail?.trim() ?? '',
         notes: focusedTask.notes ?? '',
       });
     }
@@ -635,12 +707,12 @@ export default function TasksPage() {
     try {
       const payload = {
         dueDate: adminEditDraft.dueDate.trim() || null,
-        summary: adminEditDraft.summary.trim() || null,
+        detail: adminEditDraft.detail.trim() || null,
         notes: adminEditDraft.notes.trim() || null,
       };
       await api(
         `/tasks/${focusedTask.id}`,
-        { method: 'PATCH', body: JSON.stringify(payload) },
+        { method: 'PATCH', body: JSON.stringify(taskToBackend(payload)) },
         token,
       );
       setAdminEditSuccess('Task updated.');
@@ -658,32 +730,50 @@ export default function TasksPage() {
     const query = searchQuery.trim().toLowerCase();
     const userId = user?.id ?? '';
     return tasks.filter((task) => {
-      if (statusFilter !== 'all' && task.status !== statusFilter) return false;
-      if (priorityFilter !== 'all' && task.priority !== priorityFilter) return false;
-      if (!showDone && task.status === 'done') return false;
-      if (showAssignedToMe) {
+      // Filter by sidebar view
+      if (sidebarView === 'mine') {
         if (!userId) return false;
         const isAssigned = task.assignees.some((assignee) => assignee.id === userId);
         if (!isAssigned) return false;
+      } else if (sidebarView === 'all') {
+        // Show all tasks regardless of status
+      } else if (sidebarView === 'todo') {
+        if (task.status !== 'todo') return false;
+      } else if (sidebarView === 'in_progress') {
+        if (task.status !== 'in_progress') return false;
+      } else if (sidebarView === 'in_review') {
+        if (task.status !== 'in_review') return false;
+      } else if (sidebarView === 'done') {
+        if (task.status !== 'done') return false;
       }
-      if (!query) return true;
-      const assigneeText = task.assignees
-        .map((assignee) => `${assignee.name ?? ''} ${assignee.email ?? ''}`.trim())
-        .filter(Boolean)
-        .join(' ');
-      const target = [
-        task.title,
-        task.summary,
-        assigneeText,
-        task.project,
-        task.tags.join(' '),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return target.includes(query);
+      // dashboard shows all non-done tasks
+      if (sidebarView === 'dashboard' && task.status === 'done') return false;
+      
+      // Filter by priority
+      if (priorityFilter !== 'all' && task.priority !== priorityFilter) return false;
+      
+      // Filter by search query
+      if (query) {
+        const assigneeText = task.assignees
+          .map((assignee) => `${assignee.userName ?? ''} ${assignee.email ?? ''}`.trim())
+          .filter(Boolean)
+          .join(' ');
+        const target = [
+          task.title,
+          task.detail,
+          assigneeText,
+          task.project,
+          task.tags.join(' '),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!target.includes(query)) return false;
+      }
+      
+      return true;
     });
-  }, [tasks, searchQuery, statusFilter, priorityFilter, showDone, showAssignedToMe, user?.id]);
+  }, [tasks, sidebarView, priorityFilter, searchQuery, user?.id]);
 
   const sortedTasks = useMemo(() => {
     const sorted = [...filteredTasks];
@@ -735,6 +825,11 @@ export default function TasksPage() {
   );
   const today = new Date();
   const todayKey = toDateKey(today);
+  const weekStart = startOfWeek(today);
+  const weekEnd = endOfWeek(today);
+  const weekStartKey = toDateKey(weekStart);
+  const weekEndKey = toDateKey(weekEnd);
+  
   const openCount = tasks.filter((task) => task.status !== 'done').length;
   const doneCount = tasks.filter((task) => task.status === 'done').length;
   const dueTodayCount = tasks.filter((task) => task.dueDate === todayKey).length;
@@ -743,6 +838,29 @@ export default function TasksPage() {
     if (!task.dueDate) return false;
     return task.dueDate < todayKey;
   }).length;
+  
+  // Additional dashboard statistics
+  const todoCount = tasks.filter((task) => task.status === 'todo').length;
+  const inProgressCount = tasks.filter((task) => task.status === 'in_progress').length;
+  const inReviewCount = tasks.filter((task) => task.status === 'in_review').length;
+  const urgentCount = tasks.filter((task) => task.priority === 'urgent' && task.status !== 'done').length;
+  const highPriorityCount = tasks.filter((task) => task.priority === 'high' && task.status !== 'done').length;
+  const dueThisWeekCount = tasks.filter((task) => {
+    if (task.status === 'done') return false;
+    if (!task.dueDate) return false;
+    return task.dueDate >= weekStartKey && task.dueDate <= weekEndKey;
+  }).length;
+  const myTasksCount = tasks.filter((task) => {
+    if (!user?.id) return false;
+    return task.assignees.some((assignee) => assignee.id === user.id) && task.status !== 'done';
+  }).length;
+  const unassignedCount = tasks.filter((task) => task.assignees.length === 0 && task.status !== 'done').length;
+  const recentTasksCount = tasks.filter((task) => {
+    const created = new Date(task.createdAt);
+    const daysSince = diffInDays(created, today);
+    return daysSince <= 7 && task.status !== 'done';
+  }).length;
+  
   const readOnly = user?.role === 'OBSERVER';
   const canActOnTask = !readOnly && isAssignedToUser;
 
@@ -760,7 +878,7 @@ export default function TasksPage() {
       setSelfAssignError('');
       setSelfAssignSuccess('');
       setAdminEditOpen(false);
-      setAdminEditDraft({ dueDate: '', summary: '', notes: '' });
+      setAdminEditDraft({ dueDate: '', detail: '', notes: '' });
       setAdminEditError('');
       setAdminEditSuccess('');
       setAssignModalOpen(false);
@@ -780,7 +898,7 @@ export default function TasksPage() {
     setAdminEditOpen(false);
     setAdminEditDraft({
       dueDate: focusedTask.dueDate ?? '',
-      summary: focusedTask.summary?.trim() ?? '',
+      detail: focusedTask.detail?.trim() ?? '',
       notes: focusedTask.notes ?? '',
     });
     setAdminEditError('');
@@ -804,368 +922,772 @@ export default function TasksPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#f4f8ff] via-[#eef2ff] to-white text-slate-900">
       <TopNav />
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
-        <div className="space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Tasks</p>
-          <h1 className="text-3xl font-semibold text-slate-900">Task command center</h1>
-          <p className="max-w-2xl text-sm text-slate-600">
-            Track onboarding, review queues, and follow-ups across your active profiles.
-          </p>
-        </div>
-
-        <section className="lg:sticky lg:top-0 lg:z-20 lg:-mx-6 lg:border-b lg:border-slate-200/70 lg:bg-white lg:px-6 lg:pb-4 lg:pt-3 lg:shadow-[0_18px_45px_-35px_rgba(15,23,42,0.35)]">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Open tasks" value={String(openCount)} helper="Need action" tone="slate" />
-            <StatCard label="Due today" value={String(dueTodayCount)} helper="Priority focus" tone="amber" />
-            <StatCard label="Overdue" value={String(overdueCount)} helper="Requires follow-up" tone="rose" />
-            <StatCard label="Completed" value={String(doneCount)} helper="Closed this cycle" tone="emerald" />
-          </div>
-        </section>
-
+      <div className="mx-auto w-full min-h-screen pt-[57px]">
         {tasksError ? (
-          <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="mx-4 mt-4 rounded-3xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {tasksError}
           </div>
         ) : null}
-
-        <div className="flex flex-col gap-6 lg:flex-row">
-          <aside className="lg:w-72 xl:w-80">
-            <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] lg:sticky lg:top-32">
-              <div className="text-xs uppercase tracking-[0.22em] text-slate-500">Filters</div>
-              <div className="mt-4 space-y-4">
-                <label className="space-y-1">
-                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Search</span>
-                  <input
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search by task, assignee, project, or tag..."
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                  />
-                </label>
-                <div className="space-y-2">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                    Visibility
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={showDone}
-                      onChange={(event) => setShowDone(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 accent-slate-900"
-                    />
-                    <span>Show done</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={showAssignedToMe}
-                      onChange={(event) => setShowAssignedToMe(event.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 accent-slate-900"
-                    />
-                    <span>Show assigned to me</span>
-                  </label>
-                </div>
-                <label className="space-y-1">
-                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Status</span>
-                  <select
-                    value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value as 'all' | TaskStatus)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                  >
-                    <option value="all">All</option>
-                    <option value="todo">To do</option>
-                    <option value="in_progress">In progress</option>
-                    <option value="in_review">In review</option>
-                    <option value="done">Done</option>
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Priority</span>
-                  <select
-                    value={priorityFilter}
-                    onChange={(event) =>
-                      setPriorityFilter(event.target.value as 'all' | TaskPriority)
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                  >
-                    <option value="all">All</option>
-                    <option value="urgent">Urgent</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                </label>
-              </div>
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <div className="grid gap-4 min-h-screen xl:grid-cols-[280px_1fr]">
+          <section className="flex flex-col gap-2 bg-[#0b1224] text-slate-100" style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}>
+            <div className="p-4 space-y-4">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  Showing {sortedTasks.length} task{sortedTasks.length === 1 ? '' : 's'}
-                  {sortedTasks.length !== tasks.length ? ` of ${tasks.length}` : ''}
-                </div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                  Today: {formatShortDate(todayKey)}
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Tasks</p>
+                  <h1 className="text-lg font-semibold text-slate-100">Task Center</h1>
                 </div>
               </div>
-            </div>
-          </aside>
-          <section className="space-y-4 lg:flex-[1.2]">
-            <div className="flex items-center gap-3">
-              {canCreate ? (
+              <div className="space-y-1">
                 <button
-                  type="button"
-                  onClick={() =>
-                    setCreateOpen((prev) => {
-                      if (!prev) {
-                        setCreateError('');
-                        setCreateSuccess('');
-                      }
-                      return !prev;
-                    })
-                  }
-                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:text-slate-900"
+                  onClick={() => setSidebarView('dashboard')}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    sidebarView === 'dashboard'
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                  }`}
                 >
-                  New task
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  </svg>
+                  <span>Dashboard</span>
                 </button>
-              ) : null}
-              <div className="ml-auto flex flex-wrap items-center gap-3">
-                <span className="inline-flex h-5 w-5 items-center justify-center text-slate-500">
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M7 3v18" />
-                    <path d="M3 7l4-4 4 4" />
-                    <path d="M17 21V3" />
-                    <path d="M13 17l4 4 4-4" />
+                <button
+                  onClick={() => setSidebarView('mine')}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    sidebarView === 'mine'
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
-                </span>
-                <span className="text-[11px] tracking-[0.18em] text-slate-500 normal-case">
-                  by
-                </span>
-                <div className="relative">
-                  <select
-                    aria-label="Sort tasks"
-                    value={sortKey}
-                    onChange={(event) =>
-                      setSortKey(event.target.value as 'due' | 'priority' | 'created')
-                    }
-                    className="appearance-none rounded-full border border-slate-200 bg-transparent px-4 py-2 pr-9 text-xs font-semibold uppercase tracking-[0.18em] text-slate-700 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                  >
-                    <option value="due">Due date</option>
-                    <option value="priority">Priority</option>
-                    <option value="created">Created</option>
-                  </select>
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M9 6l6 6-6 6" />
+                  <span>Mine</span>
+                </button>
+                <button
+                  onClick={() => setSidebarView('all')}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    sidebarView === 'all'
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
-                </div>
+                  <span>All</span>
+                </button>
+                <div className="my-2 border-t border-slate-700"></div>
+                <button
+                  onClick={() => setSidebarView('todo')}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    sidebarView === 'todo'
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <span>To Do</span>
+                </button>
+                <button
+                  onClick={() => setSidebarView('in_progress')}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    sidebarView === 'in_progress'
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span>In Progress</span>
+                </button>
+                <button
+                  onClick={() => setSidebarView('in_review')}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    sidebarView === 'in_review'
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>In Review</span>
+                </button>
+                <button
+                  onClick={() => setSidebarView('done')}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    sidebarView === 'done'
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Done</span>
+                </button>
+                {isAdmin && (
+                  <>
+                    <div className="my-2 border-t border-slate-700"></div>
+                    <button
+                      onClick={() => setSidebarView('done_requests')}
+                      className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                        sidebarView === 'done_requests'
+                          ? 'bg-slate-700 text-white'
+                          : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                      }`}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                      </svg>
+                      <span>Done Requests</span>
+                    </button>
+                    <button
+                      onClick={() => setSidebarView('assign_requests')}
+                      className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                        sidebarView === 'assign_requests'
+                          ? 'bg-slate-700 text-white'
+                          : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                      }`}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                      </svg>
+                      <span>Assign Requests</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
-            {canCreate && createOpen ? (
-              <div className="space-y-4">
-                {createError ? (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                    {createError}
+          </section>
+          <div className="flex flex-col gap-6 px-4 py-8">
+            <div className="space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Tasks</p>
+              <h1 className="text-3xl font-semibold text-slate-900">
+                {sidebarView === 'dashboard' && 'Task command center'}
+                {sidebarView === 'mine' && 'My Tasks'}
+                {sidebarView === 'all' && 'All Tasks'}
+                {sidebarView === 'todo' && 'To Do Tasks'}
+                {sidebarView === 'in_progress' && 'In Progress Tasks'}
+                {sidebarView === 'in_review' && 'In Review Tasks'}
+                {sidebarView === 'done' && 'Completed Tasks'}
+                {sidebarView === 'done_requests' && 'Done Requests'}
+                {sidebarView === 'assign_requests' && 'Assign Requests'}
+              </h1>
+              <p className="max-w-2xl text-sm text-slate-600">
+                {sidebarView === 'dashboard' && 'Track onboarding, review queues, and follow-ups across your active profiles.'}
+                {sidebarView === 'mine' && 'Tasks assigned to you across all statuses.'}
+                {sidebarView === 'all' && 'All tasks across all statuses.'}
+                {sidebarView === 'todo' && 'Tasks that are ready to be started.'}
+                {sidebarView === 'in_progress' && 'Tasks currently being worked on.'}
+                {sidebarView === 'in_review' && 'Tasks awaiting review and approval.'}
+                {sidebarView === 'done' && 'Tasks that have been completed.'}
+                {sidebarView === 'done_requests' && 'Review requests to mark tasks as done.'}
+                {sidebarView === 'assign_requests' && 'Review requests to assign users to tasks.'}
+              </p>
+            </div>
+
+            {sidebarView === 'dashboard' && (
+              <section className="space-y-6">
+                {/* Primary Metrics */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <StatCard 
+                    label="Open tasks" 
+                    value={String(openCount)} 
+                    helper="Need action" 
+                    tone="slate" 
+                  />
+                  <StatCard 
+                    label="Due today" 
+                    value={String(dueTodayCount)} 
+                    helper="Priority focus" 
+                    tone="amber" 
+                  />
+                  <StatCard 
+                    label="Overdue" 
+                    value={String(overdueCount)} 
+                    helper="Requires follow-up" 
+                    tone="rose" 
+                  />
+                  <StatCard 
+                    label="Completed" 
+                    value={String(doneCount)} 
+                    helper="Closed this cycle" 
+                    tone="emerald" 
+                  />
+                </div>
+
+                {/* Secondary Metrics Grid */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-sky-600">My Tasks</div>
+                        <div className="mt-1 text-2xl font-semibold text-sky-900">{myTasksCount}</div>
+                        <div className="text-xs text-sky-600">Assigned to me</div>
+                      </div>
+                      <UserCheck className="w-8 h-8 text-sky-400" />
+                    </div>
                   </div>
-                ) : null}
-                {createSuccess ? (
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                    {createSuccess}
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-amber-600">Due This Week</div>
+                        <div className="mt-1 text-2xl font-semibold text-amber-900">{dueThisWeekCount}</div>
+                        <div className="text-xs text-amber-600">Upcoming deadlines</div>
+                      </div>
+                      <Calendar className="w-8 h-8 text-amber-400" />
+                    </div>
                   </div>
-                ) : null}
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-1 md:col-span-2">
-                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Title
-                    </span>
-                    <input
-                      value={createDraft.title}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, title: event.target.value }))
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                    />
-                  </label>
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-rose-600">Urgent</div>
+                        <div className="mt-1 text-2xl font-semibold text-rose-900">{urgentCount}</div>
+                        <div className="text-xs text-rose-600">Requires attention</div>
+                      </div>
+                      <AlertCircle className="w-8 h-8 text-rose-400" />
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-emerald-600">In Review</div>
+                        <div className="mt-1 text-2xl font-semibold text-emerald-900">{inReviewCount}</div>
+                        <div className="text-xs text-emerald-600">Awaiting approval</div>
+                      </div>
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Breakdown */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex items-center gap-2 mb-4">
+                    <BarChart3 className="w-5 h-5 text-slate-600" />
+                    <h3 className="text-lg font-semibold text-slate-900">Status Breakdown</h3>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-600">To Do</span>
+                        <span className="text-sm font-semibold text-slate-900">{todoCount}</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-amber-500 rounded-full transition-all"
+                          style={{ width: openCount > 0 ? `${(todoCount / openCount) * 100}%` : '0%' }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-600">In Progress</span>
+                        <span className="text-sm font-semibold text-slate-900">{inProgressCount}</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-sky-500 rounded-full transition-all"
+                          style={{ width: openCount > 0 ? `${(inProgressCount / openCount) * 100}%` : '0%' }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-600">In Review</span>
+                        <span className="text-sm font-semibold text-slate-900">{inReviewCount}</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-emerald-500 rounded-full transition-all"
+                          style={{ width: openCount > 0 ? `${(inReviewCount / openCount) * 100}%` : '0%' }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-600">Done</span>
+                        <span className="text-sm font-semibold text-slate-900">{doneCount}</span>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-slate-900 rounded-full transition-all"
+                          style={{ width: tasks.length > 0 ? `${(doneCount / tasks.length) * 100}%` : '0%' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Priority & Additional Info */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Target className="w-5 h-5 text-slate-600" />
+                      <h3 className="text-lg font-semibold text-slate-900">Priority Overview</h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-rose-50 border border-rose-200">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-rose-600" />
+                          <span className="text-sm font-medium text-rose-900">Urgent</span>
+                        </div>
+                        <span className="text-sm font-semibold text-rose-900">{urgentCount}</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-orange-50 border border-orange-200">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4 text-orange-600" />
+                          <span className="text-sm font-medium text-orange-900">High</span>
+                        </div>
+                        <span className="text-sm font-semibold text-orange-900">{highPriorityCount}</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50 border border-amber-200">
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-amber-600" />
+                          <span className="text-sm font-medium text-amber-900">Medium</span>
+                        </div>
+                        <span className="text-sm font-semibold text-amber-900">
+                          {tasks.filter((task) => task.priority === 'medium' && task.status !== 'done').length}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-slate-900">Low</span>
+                        </div>
+                        <span className="text-sm font-semibold text-slate-900">
+                          {tasks.filter((task) => task.priority === 'low' && task.status !== 'done').length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                      <TrendingUp className="w-5 h-5 text-slate-600" />
+                      <h3 className="text-lg font-semibold text-slate-900">Quick Insights</h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-sm text-slate-600">Unassigned Tasks</span>
+                        <span className="text-sm font-semibold text-slate-900">{unassignedCount}</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-sm text-slate-600">Recent (Last 7 Days)</span>
+                        <span className="text-sm font-semibold text-slate-900">{recentTasksCount}</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-sm text-slate-600">Total Tasks</span>
+                        <span className="text-sm font-semibold text-slate-900">{tasks.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-sm text-slate-600">Completion Rate</span>
+                        <span className="text-sm font-semibold text-slate-900">
+                          {tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            <section className="space-y-4">
+            {sidebarView !== 'dashboard' && sidebarView !== 'done_requests' && sidebarView !== 'assign_requests' && (
+              <div className="relative rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search by task, assignee, project, or tag..."
+                  className="w-full rounded-lg border-0 bg-transparent pl-8 pr-0 py-0 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring-0"
+                />
+              </div>
+            )}
+            {sidebarView !== 'dashboard' && sidebarView !== 'done_requests' && sidebarView !== 'assign_requests' && (
+              <div className="flex items-center gap-3">
+                <div className="ml-auto flex flex-wrap items-center gap-3">
                   <label className="space-y-1">
-                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Due date
-                    </span>
-                    <input
-                      type="date"
-                      value={createDraft.dueDate}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, dueDate: event.target.value }))
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                    />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Priority
-                    </span>
+                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Priority</span>
                     <select
-                      value={createDraft.priority}
+                      value={priorityFilter}
                       onChange={(event) =>
-                        setCreateDraft((prev) => ({
-                          ...prev,
-                          priority: event.target.value as TaskPriority,
-                        }))
+                        setPriorityFilter(event.target.value as 'all' | TaskPriority)
                       }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:ring-slate-300"
                     >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
+                      <option value="all">All</option>
                       <option value="urgent">Urgent</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
                     </select>
                   </label>
-                  <label className="space-y-1">
-                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Project
-                    </span>
-                    <input
-                      value={createDraft.project}
+                  <span className="inline-flex h-5 w-5 items-center justify-center text-slate-500">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M7 3v18" />
+                      <path d="M3 7l4-4 4 4" />
+                      <path d="M17 21V3" />
+                      <path d="M13 17l4 4 4-4" />
+                    </svg>
+                  </span>
+                  <span className="text-[11px] tracking-[0.18em] text-slate-500 normal-case">
+                    by
+                  </span>
+                  <div className="relative">
+                    <select
+                      aria-label="Sort tasks"
+                      value={sortKey}
                       onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, project: event.target.value }))
+                        setSortKey(event.target.value as 'due' | 'priority' | 'created')
                       }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                    />
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Tags
-                    </span>
-                    <input
-                      value={createDraft.tags}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, tags: event.target.value }))
-                      }
-                      placeholder="client, onboarding"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                    />
-                  </label>
-                  <label className="space-y-1 md:col-span-2">
-                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Summary
-                    </span>
-                    <textarea
-                      rows={2}
-                      value={createDraft.summary}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, summary: event.target.value }))
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                    />
-                  </label>
-                  <label className="space-y-1 md:col-span-2">
-                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Notes
-                    </span>
-                    <textarea
-                      rows={2}
-                      value={createDraft.notes}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, notes: event.target.value }))
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                    />
-                  </label>
-                  <label className="space-y-1 md:col-span-2">
-                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Workspace link
-                    </span>
-                    <input
-                      value={createDraft.href}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, href: event.target.value }))
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                    />
-                  </label>
-                </div>
-                <div className="space-y-2">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                    Assignees
+                      className="appearance-none rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                    >
+                      <option value="due">Due date</option>
+                      <option value="priority">Priority</option>
+                      <option value="created">Created</option>
+                    </select>
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M9 6l6 6-6 6" />
+                    </svg>
                   </div>
-                  {usersLoading ? (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                      Loading users...
-                    </div>
-                  ) : usersError ? (
-                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                      {usersError}
-                    </div>
-                  ) : users.length === 0 ? (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                      No active users available.
+                </div>
+              </div>
+            )}
+            {sidebarView === 'done_requests' && isAdmin && (
+              <div className="space-y-4">
+                <div className="relative rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={doneRequestsSearch}
+                    onChange={(e) => setDoneRequestsSearch(e.target.value)}
+                    placeholder="Search by title, requester, or assignee..."
+                    className="w-full rounded-lg border-0 bg-transparent pl-8 pr-0 py-0 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring-0"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="ml-auto flex items-center gap-3">
+                    <span className="text-[11px] tracking-[0.18em] text-slate-500">Sort by</span>
+                    <select
+                      value={doneRequestsSortBy}
+                      onChange={(e) => setDoneRequestsSortBy(e.target.value as 'who' | 'when')}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                    >
+                      <option value="when">When</option>
+                      <option value="who">Who</option>
+                    </select>
+                  </div>
+                </div>
+                {doneRequestsLoading ? (
+                  <div className="rounded-3xl border border-slate-200 bg-white/80 px-5 py-6 text-sm text-slate-600">
+                    Loading done requests...
+                  </div>
+                ) : (() => {
+                  const filtered = doneRequests.filter((req) => {
+                    const search = doneRequestsSearch.toLowerCase();
+                    return (
+                      req.taskTitle?.toLowerCase().includes(search) ||
+                      req.requesterName?.toLowerCase().includes(search) ||
+                      req.requesterEmail?.toLowerCase().includes(search)
+                    );
+                  });
+                  const sorted = [...filtered].sort((a, b) => {
+                    if (doneRequestsSortBy === 'when') {
+                      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                    } else {
+                      return (a.requesterName || '').localeCompare(b.requesterName || '');
+                    }
+                  });
+                  const taskMap = new Map(tasks.map(t => [t.id, t]));
+                  return sorted.length === 0 ? (
+                    <div className="rounded-3xl border border-dashed border-slate-200 bg-white/80 px-5 py-6 text-center">
+                      <div className="text-sm font-medium text-slate-500">No done requests found</div>
                     </div>
                   ) : (
-                    <div className="max-h-40 space-y-1 overflow-auto rounded-2xl border border-slate-200 bg-white/70 px-3 py-2">
-                      {users.map((member) => (
-                        <label key={member.id} className="flex items-center gap-2 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={createDraft.assigneeIds.includes(member.id)}
-                            onChange={() => toggleDraftAssignee(member.id)}
-                            className="h-4 w-4 rounded border-slate-300 accent-slate-900"
-                          />
-                          <span className="font-medium text-slate-800">{member.name}</span>
-                          <span className="text-xs text-slate-500">{member.email}</span>
-                        </label>
-                      ))}
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">ID</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Title</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Request By</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Assigned</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Request At</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {sorted.map((req, index) => {
+                            const task = taskMap.get(req.taskId);
+                            const assignees = task?.assignees || [];
+                            const assigneeNames = assignees.map(a => a.userName).join(', ') || 'Unassigned';
+                            const handleApprove = async () => {
+                              if (!token) return;
+                              try {
+                                await api(`/tasks/done-requests/${req.id}/approve`, { method: 'POST' }, token);
+                                await loadDoneRequests();
+                                await loadTasks();
+                              } catch (err) {
+                                console.error('Failed to approve:', err);
+                              }
+                            };
+                            const handleReject = () => {
+                              setRejectingRequestId(req.id);
+                              setRejectReasonDraft('');
+                              setRejectReasonModalOpen(true);
+                            };
+                            return (
+                              <tr key={req.id} className="hover:bg-slate-50">
+                                <td className="px-4 py-3 text-sm text-slate-900">{index + 1}</td>
+                                <td className="px-4 py-3">
+                                  <button
+                                    onClick={() => openTaskModal(req.taskId)}
+                                    className="text-sm font-medium text-slate-900 hover:text-slate-700 text-left"
+                                  >
+                                    {req.taskTitle || 'Untitled'}
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-700">{req.requesterName || req.requesterEmail || 'Unknown'}</td>
+                                <td className="px-4 py-3 text-sm text-slate-700">{assigneeNames}</td>
+                                <td className="px-4 py-3 text-sm text-slate-600">{new Date(req.createdAt).toLocaleString()}</td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={handleApprove}
+                                      className="rounded-lg bg-emerald-50 p-2 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                      title="Accept"
+                                    >
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={handleReject}
+                                      className="rounded-lg bg-rose-50 p-2 text-rose-700 hover:bg-rose-100 transition-colors"
+                                      title="Reject"
+                                    >
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
-                  )}
-                  <div className="text-xs text-slate-500">
-                    {isAdmin
-                      ? 'Assignments apply immediately.'
-                      : 'Assignments require admin approval.'}
+                  );
+                })()}
+              </div>
+            )}
+
+            {sidebarView === 'assign_requests' && isAdmin && (
+              <div className="space-y-4">
+                <div className="relative rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={assignRequestsSearch}
+                    onChange={(e) => setAssignRequestsSearch(e.target.value)}
+                    placeholder="Search by title, requester, or assignee..."
+                    className="w-full rounded-lg border-0 bg-transparent pl-8 pr-0 py-0 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:ring-0"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="ml-auto flex items-center gap-3">
+                    <span className="text-[11px] tracking-[0.18em] text-slate-500">Sort by</span>
+                    <select
+                      value={assignRequestsSortBy}
+                      onChange={(e) => setAssignRequestsSortBy(e.target.value as 'who' | 'when' | 'task')}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 pr-9 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                    >
+                      <option value="when">When</option>
+                      <option value="who">Who</option>
+                      <option value="task">Task</option>
+                    </select>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCreateTask}
-                    disabled={createSaving}
-                    className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-[0_12px_40px_-24px_rgba(15,23,42,0.6)] transition hover:bg-slate-800 disabled:opacity-60"
-                  >
-                    {createSaving ? 'Saving...' : isAdmin ? 'Create task' : 'Submit request'}
-                  </button>
-                </div>
+                {assignRequestsLoading ? (
+                  <div className="rounded-3xl border border-slate-200 bg-white/80 px-5 py-6 text-sm text-slate-600">
+                    Loading assign requests...
+                  </div>
+                ) : (() => {
+                  const filtered = assignRequests.filter((req) => {
+                    const search = assignRequestsSearch.toLowerCase();
+                    return (
+                      req.taskTitle?.toLowerCase().includes(search) ||
+                      req.requesterName?.toLowerCase().includes(search) ||
+                      req.requesterEmail?.toLowerCase().includes(search) ||
+                      req.assigneeName?.toLowerCase().includes(search) ||
+                      req.assigneeEmail?.toLowerCase().includes(search)
+                    );
+                  });
+                  const sorted = [...filtered].sort((a, b) => {
+                    if (assignRequestsSortBy === 'when') {
+                      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                    } else if (assignRequestsSortBy === 'who') {
+                      return (a.requesterName || '').localeCompare(b.requesterName || '');
+                    } else {
+                      return (a.taskTitle || '').localeCompare(b.taskTitle || '');
+                    }
+                  });
+                  return sorted.length === 0 ? (
+                    <div className="rounded-3xl border border-dashed border-slate-200 bg-white/80 px-5 py-6 text-center">
+                      <div className="text-sm font-medium text-slate-500">No assign requests found</div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">ID</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Title</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Send By</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Send At</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {sorted.map((req, index) => {
+                            const handleApprove = async () => {
+                              if (!token) return;
+                              try {
+                                await api(`/tasks/assign-requests/${req.id}/approve`, { method: 'POST' }, token);
+                                await loadAssignRequests();
+                                await loadTasks();
+                              } catch (err) {
+                                console.error('Failed to approve:', err);
+                              }
+                            };
+                            const handleReject = async () => {
+                              if (!token) return;
+                              try {
+                                await api(`/tasks/assign-requests/${req.id}/reject`, { method: 'POST', body: JSON.stringify({ reason: null }) }, token);
+                                await loadAssignRequests();
+                                await loadTasks();
+                              } catch (err) {
+                                console.error('Failed to reject:', err);
+                              }
+                            };
+                            return (
+                              <tr key={req.id} className="hover:bg-slate-50">
+                                <td className="px-4 py-3 text-sm text-slate-900">{index + 1}</td>
+                                <td className="px-4 py-3">
+                                  <button
+                                    onClick={() => openTaskModal(req.taskId)}
+                                    className="text-sm font-medium text-slate-900 hover:text-slate-700 text-left"
+                                  >
+                                    {req.taskTitle || 'Untitled'}
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-700">{req.requesterName || req.requesterEmail || 'Unknown'}</td>
+                                <td className="px-4 py-3 text-sm text-slate-600">{new Date(req.createdAt).toLocaleString()}</td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={handleApprove}
+                                      className="rounded-lg bg-emerald-50 p-2 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                      title="Accept"
+                                    >
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={handleReject}
+                                      className="rounded-lg bg-rose-50 p-2 text-rose-700 hover:bg-rose-100 transition-colors"
+                                      title="Reject"
+                                    >
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </div>
-            ) : null}
-            {tasksLoading ? (
-              <div className="rounded-3xl border border-slate-200 bg-white/80 px-5 py-6 text-sm text-slate-600">
-                Loading tasks...
-              </div>
-            ) : sortedTasks.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-slate-200 bg-white/80 px-5 py-6 text-sm text-slate-500">
-                No tasks match this filter set.
-              </div>
-            ) : (
-              sortedTasks.map((task) => {
+            )}
+
+            {sidebarView !== 'dashboard' && sidebarView !== 'done_requests' && sidebarView !== 'assign_requests' && (
+              <>
+                {tasksLoading ? (
+                  <div className="rounded-3xl border border-slate-200 bg-white/80 px-5 py-6 text-sm text-slate-600">
+                    Loading tasks...
+                  </div>
+                ) : sortedTasks.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-white/80 px-5 py-6 text-center">
+                    <div className="text-slate-400 mb-2">
+                      <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                    </div>
+                    <div className="text-sm font-medium text-slate-500">No tasks found</div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {sidebarView === 'mine' && 'You have no assigned tasks.'}
+                      {sidebarView === 'all' && 'No tasks available.'}
+                      {sidebarView === 'todo' && 'No tasks in To Do status.'}
+                      {sidebarView === 'in_progress' && 'No tasks in progress.'}
+                      {sidebarView === 'in_review' && 'No tasks in review.'}
+                      {sidebarView === 'done' && 'No completed tasks.'}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="text-xs text-slate-500 mb-2">
+                      Showing {sortedTasks.length} task{sortedTasks.length === 1 ? '' : 's'}
+                    </div>
+                    {sortedTasks.map((task) => {
                 const status = STATUS_STYLES[task.status];
                 const priority = PRIORITY_STYLES[task.priority];
-                const approvalStatus = task.approvalStatus ?? 'approved';
-                const approval = APPROVAL_STYLES[approvalStatus];
                 const deadlineBadge = buildDeadlineBadge(task, today);
                 const dueDiff = diffInDays(today, parseDateKey(task.dueDate));
                 const dueDateLabel = formatShortDate(task.dueDate);
                 const isSelected = task.id === focusedTask?.id;
-                const summaryText = task.summary?.trim();
+                const detailText = task.detail?.trim();
                 const dueTone =
                   task.status === 'done'
                     ? 'text-slate-400'
@@ -1194,13 +1716,6 @@ export default function TasksPage() {
                             <span className={`h-2 w-2 rounded-full ${status.dot}`} />
                             {status.label}
                           </span>
-                          {approvalStatus !== 'approved' ? (
-                            <span
-                              className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${approval.chip}`}
-                            >
-                              {approval.label}
-                            </span>
-                          ) : null}
                           <span
                             className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${priority.chip}`}
                           >
@@ -1215,7 +1730,7 @@ export default function TasksPage() {
                         <div>
                           <div className="text-lg font-semibold text-slate-900">{task.title}</div>
                           <div className="text-sm text-slate-600">
-                            {summaryText || 'No summary'}
+                            {detailText || 'No detail'}
                           </div>
                         </div>
                       </div>
@@ -1246,69 +1761,97 @@ export default function TasksPage() {
                     </div>
                   </button>
                 );
-              })
+              })}
+              </div>
+            )}
+              </>
             )}
           </section>
+          </div>
         </div>
         {taskModalOpen && focusedTask ? (
-          <div
-            className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-slate-900/50 px-4 pb-12 pt-32 backdrop-blur-sm sm:pt-36"
-            onClick={closeTaskModal}
-          >
+          <>
+            <div
+              className="fixed"
+              style={{
+                top: '56px',
+                left: '0',
+                right: '0',
+                bottom: '0',
+                zIndex: 40,
+                pointerEvents: 'auto'
+              }}
+              onClick={closeTaskModal}
+            />
             <div
               role="dialog"
               aria-modal="true"
-              className="w-full max-w-4xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+              className="fixed bg-white overflow-y-auto shadow-2xl border-l border-slate-200"
+              style={{
+                top: '56px',
+                bottom: '0',
+                right: '0',
+                width: 'calc((100vw - 280px) * 0.5)',
+                height: 'calc(100vh - 56px)',
+                zIndex: 50
+              }}
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
-                    Task detail
-                  </p>
-                  <h2 className="mt-1 text-2xl font-semibold text-slate-900">
-                    {focusedTask.title}
-                  </h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  {isAdmin ? (
-                    adminEditOpen ? (
-                      <>
+              <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 sm:px-8">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
+                      Task detail
+                    </p>
+                    <h2 className="mt-1 text-2xl font-semibold text-slate-900">
+                      {focusedTask.title}
+                    </h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isAdmin ? (
+                      adminEditOpen ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleAdminEditSave}
+                            disabled={adminEditSaving}
+                            className="flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-slate-800 disabled:opacity-60"
+                          >
+                            <Save className="w-3 h-3" />
+                            {adminEditSaving ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelAdminEdit}
+                            className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600"
+                          >
+                            <XCircle className="w-3 h-3 text-slate-600" />
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
                         <button
                           type="button"
-                          onClick={handleAdminEditSave}
-                          disabled={adminEditSaving}
-                          className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-slate-800 disabled:opacity-60"
+                          onClick={startAdminEdit}
+                          className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600"
                         >
-                          {adminEditSaving ? 'Saving...' : 'Save'}
+                          <Pencil className="w-3 h-3" />
+                          Edit
                         </button>
-                        <button
-                          type="button"
-                          onClick={cancelAdminEdit}
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={startAdminEdit}
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600"
-                      >
-                        Edit
-                      </button>
-                    )
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={closeTaskModal}
-                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600"
-                  >
-                    Close
-                  </button>
+                      )
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={closeTaskModal}
+                      className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors"
+                      aria-label="Close modal"
+                    >
+                      <XCircle className="w-5 h-5 text-slate-600" />
+                    </button>
+                  </div>
                 </div>
               </div>
+              <div className="px-6 py-6 sm:px-8">
               <div className="mt-5 flex flex-wrap items-center gap-2">
                 <span
                   className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
@@ -1317,15 +1860,6 @@ export default function TasksPage() {
                 >
                   {STATUS_STYLES[focusedTask.status].label}
                 </span>
-                {focusedTask.approvalStatus && focusedTask.approvalStatus !== 'approved' ? (
-                  <span
-                    className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                      APPROVAL_STYLES[focusedTask.approvalStatus].chip
-                    }`}
-                  >
-                    {APPROVAL_STYLES[focusedTask.approvalStatus].label}
-                  </span>
-                ) : null}
                 <span
                   className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
                     PRIORITY_STYLES[focusedTask.priority].chip
@@ -1397,23 +1931,23 @@ export default function TasksPage() {
               </div>
               <div className="mt-4 rounded-2xl border border-slate-200/80 bg-white px-4 py-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                  Summary
+                  Detail
                 </div>
                 {isAdmin && adminEditOpen ? (
                   <textarea
                     rows={3}
-                    value={adminEditDraft.summary}
+                    value={adminEditDraft.detail}
                     onChange={(event) =>
                       setAdminEditDraft((prev) => ({
                         ...prev,
-                        summary: event.target.value,
+                        detail: event.target.value,
                       }))
                     }
                     className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
                   />
                 ) : (
                   <div className="mt-2 text-sm text-slate-600">
-                    {focusedTask.summary?.trim() || 'None set'}
+                    {focusedTask.detail?.trim() || 'None set'}
                   </div>
                 )}
               </div>
@@ -1445,15 +1979,15 @@ export default function TasksPage() {
                       const authorName = entry.author || 'Unknown';
                       const authorKey = authorName.toLowerCase();
                       const assigneeMatch = focusedTask?.assignees.find(
-                        (assignee) => (assignee.name ?? '').toLowerCase() === authorKey,
+                        (assignee) => (assignee.userName ?? '').toLowerCase() === authorKey,
                       );
                       const userMatch = users.find(
-                        (member) => member.name.toLowerCase() === authorKey,
+                        (member) => member.userName.toLowerCase() === authorKey,
                       );
                       const avatarUrl =
                         assigneeMatch?.avatarUrl ?? userMatch?.avatarUrl ?? null;
                       const displayName =
-                        assigneeMatch?.name ?? userMatch?.name ?? authorName;
+                        assigneeMatch?.userName ?? userMatch?.userName ?? authorName;
                       return (
                         <div
                           key={`${entry.timestamp}-${entry.author}-${index}`}
@@ -1516,21 +2050,23 @@ export default function TasksPage() {
                       type="button"
                       onClick={handleSaveNote}
                       disabled={!canActOnTask || noteSaving}
-                      className="rounded-full bg-slate-900 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-slate-800 disabled:opacity-60"
+                      className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-slate-800 disabled:opacity-60"
                     >
+                      <Save className="w-3 h-3" />
                       {noteSaving ? 'Saving...' : 'Save note'}
                     </button>
                     <button
                       type="button"
                       onClick={() => setNoteOpen(false)}
-                      className="rounded-full border border-slate-200 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500"
+                      className="flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500"
                     >
+                      <XCircle className="w-3 h-3 text-slate-500" />
                       Cancel
                     </button>
                   </div>
                 </div>
               ) : null}
-              {focusedTask.approvalStatus === 'rejected' && focusedTask.rejectionReason ? (
+              {focusedTask.rejectionReason ? (
                 <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   Rejection reason: {focusedTask.rejectionReason}
                 </div>
@@ -1576,7 +2112,7 @@ export default function TasksPage() {
                               disabled={isAssigned}
                               className="h-3.5 w-3.5 rounded border-slate-300 accent-slate-900"
                             />
-                            <span className="font-medium">{member.name}</span>
+                            <span className="font-medium">{member.userName}</span>
                             <span className="text-[10px] text-slate-400">{member.email}</span>
                             {isAssigned ? (
                               <span className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
@@ -1694,8 +2230,9 @@ export default function TasksPage() {
                   You have view-only access. Ask a manager to update tasks.
                 </div>
               ) : null}
+              </div>
             </div>
-          </div>
+          </>
         ) : null}
         {assignModalOpen && focusedTask && isAdmin ? (
           <div
@@ -1720,8 +2257,9 @@ export default function TasksPage() {
                 <button
                   type="button"
                   onClick={closeAssignModal}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600"
+                  className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600"
                 >
+                  <XCircle className="w-3 h-3 text-slate-600" />
                   Close
                 </button>
               </div>
@@ -1779,6 +2317,318 @@ export default function TasksPage() {
             </div>
           </div>
         ) : null}
+        {createOpen && canCreate ? (
+          <div
+            className="fixed inset-0 z-[60] flex items-start justify-center overflow-auto bg-slate-900/50 px-4 pb-12 pt-32 backdrop-blur-sm sm:pt-36"
+            onClick={() => {
+              setAssigneesDropdownOpen(false);
+              setCreateOpen(false);
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
+                    Create new task
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+              setAssigneesDropdownOpen(false);
+              setCreateOpen(false);
+            }}
+                  className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600"
+                >
+                  <XCircle className="w-3 h-3 text-slate-600" />
+                  Close
+                </button>
+              </div>
+              {createError ? (
+                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {createError}
+                </div>
+              ) : null}
+              {createSuccess ? (
+                <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  {createSuccess}
+                </div>
+              ) : null}
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="space-y-1 md:col-span-2">
+                  <div className="flex items-end gap-2">
+                    <label className="flex-1 space-y-1">
+                      <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                        Title
+                      </span>
+                      <input
+                        value={createDraft.title}
+                        onChange={(event) =>
+                          setCreateDraft((prev) => ({ ...prev, title: event.target.value }))
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                      />
+                    </label>
+                    <div className="relative" ref={assigneesDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setAssigneesDropdownOpen(!assigneesDropdownOpen)}
+                        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                      >
+                        <Users className="w-4 h-4 text-slate-600" />
+                        <span className="text-xs font-medium">
+                          {createDraft.assigneeIds.length > 0
+                            ? `${createDraft.assigneeIds.length} selected`
+                            : 'Assign'}
+                        </span>
+                        <ChevronDown className={`w-4 h-4 text-slate-600 transition-transform ${assigneesDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {assigneesDropdownOpen && (
+                        <div className="absolute right-0 top-full mt-2 z-50 w-80 max-h-96 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+                          <div className="p-3 border-b border-slate-200">
+                            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                              Assignees
+                            </div>
+                          </div>
+                          {usersLoading ? (
+                            <div className="p-4 text-sm text-slate-600">
+                              Loading users...
+                            </div>
+                          ) : usersError ? (
+                            <div className="p-4 text-sm text-rose-700">
+                              {usersError}
+                            </div>
+                          ) : users.length === 0 ? (
+                            <div className="p-4 text-sm text-slate-600">
+                              No active users available.
+                            </div>
+                          ) : (
+                            <div className="p-2 space-y-1">
+                              {users.map((member) => (
+                                <label key={member.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer text-sm text-slate-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={createDraft.assigneeIds.includes(member.id)}
+                                    onChange={() => toggleDraftAssignee(member.id)}
+                                    className="h-4 w-4 rounded border-slate-300 accent-slate-900"
+                                  />
+                                  <span className="font-medium text-slate-800">{member.name}</span>
+                                  <span className="text-xs text-slate-500">{member.email}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                          <div className="p-3 border-t border-slate-200">
+                            <div className="text-xs text-slate-500">
+                              {isAdmin
+                                ? 'Assignments apply immediately.'
+                                : 'Assignments require admin approval.'}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <label className="space-y-1">
+                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    Due date
+                  </span>
+                  <input
+                    type="date"
+                    value={createDraft.dueDate}
+                    onChange={(event) =>
+                      setCreateDraft((prev) => ({ ...prev, dueDate: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    Priority
+                  </span>
+                  <select
+                    value={createDraft.priority}
+                    onChange={(event) =>
+                      setCreateDraft((prev) => ({
+                        ...prev,
+                        priority: event.target.value as TaskPriority,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    Project
+                  </span>
+                  <input
+                    value={createDraft.project}
+                    onChange={(event) =>
+                      setCreateDraft((prev) => ({ ...prev, project: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    Tags
+                  </span>
+                  <input
+                    value={createDraft.tags}
+                    onChange={(event) =>
+                      setCreateDraft((prev) => ({ ...prev, tags: event.target.value }))
+                    }
+                    placeholder="client, onboarding"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                  />
+                </label>
+                <label className="space-y-1 md:col-span-2">
+                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    Detail
+                  </span>
+                  <textarea
+                    rows={2}
+                    value={createDraft.detail}
+                    onChange={(event) =>
+                      setCreateDraft((prev) => ({ ...prev, detail: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                  />
+                </label>
+                <label className="space-y-1 md:col-span-2">
+                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    Notes
+                  </span>
+                  <textarea
+                    rows={2}
+                    value={createDraft.notes}
+                    onChange={(event) =>
+                      setCreateDraft((prev) => ({ ...prev, notes: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                  />
+                </label>
+              </div>
+              <div className="mt-6 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCreateTask}
+                  disabled={createSaving}
+                  className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-[0_12px_40px_-24px_rgba(15,23,42,0.6)] transition hover:bg-slate-800 disabled:opacity-60"
+                >
+                  {createSaving ? 'Saving...' : isAdmin ? 'Create task' : 'Submit request'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+              setAssigneesDropdownOpen(false);
+              setCreateOpen(false);
+            }}
+                  className="flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600"
+                >
+                  <XCircle className="w-3 h-3 text-slate-600" />
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {canCreate && (
+          <button
+            type="button"
+            onClick={() =>
+              setCreateOpen((prev) => {
+                if (!prev) {
+                  setCreateError('');
+                  setCreateSuccess('');
+                }
+                return !prev;
+              })
+            }
+            style={{
+              borderRadius: '9999px',
+              transition: 'all 0.3s ease-in-out, border-radius 0.3s ease-in-out, background-color 0.3s ease-in-out',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderRadius = '1rem';
+              e.currentTarget.style.backgroundColor = '#4f46e5';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderRadius = '9999px';
+              e.currentTarget.style.backgroundColor = '#6366f1';
+            }}
+            className="fixed right-6 bottom-8 z-50 group flex items-center justify-center h-10 bg-[#6366f1] text-white shadow-[0_10px_25px_-16px_rgba(99,102,241,0.8)] transition-all duration-300 ease-in-out hover:shadow-[0_15px_35px_-12px_rgba(99,102,241,0.6)] w-10 hover:w-40"
+          >
+            <span className="group-hover:opacity-0 group-hover:scale-75 transition-all duration-300 text-xl font-light">
+              +
+            </span>
+            <span className="absolute opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 text-xs font-semibold uppercase tracking-[0.18em] whitespace-nowrap">
+              New Task
+            </span>
+          </button>
+        )}
+
+        {/* Reject Reason Modal */}
+        {rejectReasonModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+              <h2 className="text-lg font-semibold text-slate-900 mb-2">Reject Done Request</h2>
+              <p className="text-sm text-slate-600 mb-4">Please provide a reason for rejecting this done request. This reason will be added to the task notes.</p>
+              <textarea
+                value={rejectReasonDraft}
+                onChange={(e) => setRejectReasonDraft(e.target.value)}
+                placeholder="Enter rejection reason..."
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none ring-1 ring-transparent focus:border-slate-300 focus:ring-slate-300 resize-none"
+                rows={4}
+              />
+              <div className="mt-4 flex items-center justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setRejectReasonModalOpen(false);
+                    setRejectReasonDraft('');
+                    setRejectingRequestId(null);
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <XCircle className="w-4 h-4 text-slate-600" />
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!token || !rejectingRequestId) return;
+                    try {
+                      await api(`/tasks/done-requests/${rejectingRequestId}/reject`, {
+                        method: 'POST',
+                        body: JSON.stringify({ reason: rejectReasonDraft.trim() || null }),
+                      }, token);
+                      await loadDoneRequests();
+                      await loadTasks();
+                      setRejectReasonModalOpen(false);
+                      setRejectReasonDraft('');
+                      setRejectingRequestId(null);
+                    } catch (err) {
+                      console.error('Failed to reject:', err);
+                    }
+                  }}
+                  className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-600"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

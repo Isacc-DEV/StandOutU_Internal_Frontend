@@ -1,4 +1,5 @@
 import { ChangeEvent, useRef, useState, useEffect } from 'react';
+import { Save, XCircle } from 'lucide-react';
 import type { CommunityMessage } from './types';
 import { cn } from './utils';
 import { EmojiPicker, parseEmojiShortcuts, getEmojiPreview } from './EmojiPicker';
@@ -118,13 +119,15 @@ export function MessageInput({
             className="w-full rounded border border-slate-200 px-2 py-1 text-sm"
           />
           <div className="mt-1 flex gap-2">
-            <button onClick={onEditSave} className="text-xs text-blue-600 hover:underline">
+            <button onClick={onEditSave} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+              <Save className="w-3 h-3" />
               Save
             </button>
             <button
               onClick={onCancelEdit}
-              className="text-xs text-slate-600 hover:underline"
+              className="flex items-center gap-1 text-xs text-slate-600 hover:underline"
             >
+              <XCircle className="w-3 h-3 text-slate-600" />
               Cancel
             </button>
           </div>
@@ -228,7 +231,7 @@ export function MessageInput({
         <button
           onClick={handleSendClick}
           disabled={inputDisabled || (!currentDraft.trim() && selectedFiles.length === 0)}
-          className="rounded-2xl bg-[var(--community-accent)] px-4 py-3 text-xs font-semibold text-[var(--community-ink)] shadow-[0_10px_25px_-16px_rgba(74,222,128,0.8)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 min-w-[80px] flex items-center justify-center"
+          className="rounded-2xl bg-[var(--community-accent)] px-4 py-3 text-xs font-semibold text-[var(--community-ink)] shadow-[0_10px_25px_-16px_rgba(99,102,241,0.8)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 min-w-[80px] flex items-center justify-center"
         >
           {sending || uploading ? (
             <span className="inline-block animate-spin">⏳</span>

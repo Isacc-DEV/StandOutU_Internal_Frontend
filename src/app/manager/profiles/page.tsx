@@ -9,6 +9,7 @@ import {
   type MouseEventHandler,
 } from "react";
 import { useRouter } from "next/navigation";
+import { Pencil, Save, XCircle, X, UserPlus, UserMinus, Download, Settings, Eye, FileJson, Plus, Check, Trash2, Search } from "lucide-react";
 import { API_BASE, api } from "../../../lib/api";
 import { useAuth } from "../../../lib/useAuth";
 import ManagerShell from "../../../components/ManagerShell";
@@ -67,8 +68,11 @@ type Profile = {
   displayName: string;
   baseInfo: BaseInfo;
   baseResume?: BaseResume;
+  baseAdditionalBullets?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
+  createdBy?: string | null;
+  assignedBidderId?: string | null;
 };
 
 type Assignment = {
@@ -83,6 +87,7 @@ type Assignment = {
 type User = {
   id: string;
   email: string;
+  userName: string;
   name: string;
   role: "ADMIN" | "MANAGER" | "BIDDER" | "OBSERVER";
   isActive?: boolean;
@@ -108,11 +113,11 @@ const DEFAULT_SECTION_STATE = {
 };
 
 const DEFAULT_BASE_RESUME_SECTIONS = {
-  profile: true,
-  summary: true,
-  work: true,
-  education: true,
-  skills: true,
+  profile: false,
+  summary: false,
+  work: false,
+  education: false,
+  skills: false,
 };
 
 const EMPTY_RESUME_PREVIEW = `<!doctype html>
@@ -131,10 +136,16 @@ export default function ManagerProfilesPage() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [bidders, setBidders] = useState<User[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterCreatedBy, setFilterCreatedBy] = useState<string>("");
+  const [filterAssignedBy, setFilterAssignedBy] = useState<string>("");
   const [draftBase, setDraftBase] = useState<BaseInfo>({});
   const [baseResumeDraft, setBaseResumeDraft] = useState<BaseResume>(getEmptyBaseResume());
   const [baseResumeError, setBaseResumeError] = useState("");
   const [baseResumeEdit, setBaseResumeEdit] = useState(false);
+  const [baseBulletCountsDraft, setBaseBulletCountsDraft] = useState<Record<string, number>>({});
+  const [baseBulletCountsEdit, setBaseBulletCountsEdit] = useState(false);
   const [baseResumeSections, setBaseResumeSections] = useState(DEFAULT_BASE_RESUME_SECTIONS);
   const [baseResumeWorkOpen, setBaseResumeWorkOpen] = useState<boolean[]>([]);
   const [baseResumeEducationOpen, setBaseResumeEducationOpen] = useState<boolean[]>([]);
@@ -153,6 +164,15 @@ export default function ManagerProfilesPage() {
   const [error, setError] = useState("");
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignBidderId, setAssignBidderId] = useState<string>("");
+  const [assignBidderIdPending, setAssignBidderIdPending] = useState<string>("");
+  const [confirmAssignOpen, setConfirmAssignOpen] = useState(false);
+  const [confirmSaveSectionOpen, setConfirmSaveSectionOpen] = useState(false);
+  const [confirmCancelSectionOpen, setConfirmCancelSectionOpen] = useState(false);
+  const [confirmSaveBaseResumeOpen, setConfirmSaveBaseResumeOpen] = useState(false);
+  const [confirmCancelBaseResumeOpen, setConfirmCancelBaseResumeOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [pendingSectionKey, setPendingSectionKey] = useState<SectionKey | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
   const [createForm, setCreateForm] = useState(getEmptyCreateForm());
   const [sectionState, setSectionState] = useState(DEFAULT_SECTION_STATE);
@@ -210,9 +230,51 @@ export default function ManagerProfilesPage() {
       [key]: { ...prev[key], edit: false, show: true },
     }));
   };
+  const confirmCancelSection = (key: SectionKey) => {
+    setPendingSectionKey(key);
+    setConfirmCancelSectionOpen(true);
+  };
+  const confirmSaveSection = (key: SectionKey) => {
+    setPendingSectionKey(key);
+    setConfirmSaveSectionOpen(true);
+  };
   const saveSection = (key: SectionKey) => {
     void handleSaveProfile(key);
   };
+
+  const filteredProfiles = useMemo(() => {
+    let filtered = profiles;
+    
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((p) =>
+        p.displayName.toLowerCase().includes(query)
+      );
+    }
+    
+    // Filter by createdBy
+    if (filterCreatedBy) {
+      filtered = filtered.filter((p) => p.createdBy === filterCreatedBy);
+    }
+    
+    // Filter by assignedBy (assigned bidder)
+    if (filterAssignedBy) {
+      if (filterAssignedBy === "unassigned") {
+        filtered = filtered.filter((p) => {
+          const assignment = assignments.find((a) => a.profileId === p.id && !a.unassignedAt);
+          return !assignment;
+        });
+      } else {
+        filtered = filtered.filter((p) => {
+          const assignment = assignments.find((a) => a.profileId === p.id && !a.unassignedAt);
+          return assignment?.bidderUserId === filterAssignedBy;
+        });
+      }
+    }
+    
+    return filtered;
+  }, [profiles, searchQuery, filterCreatedBy, filterAssignedBy, assignments]);
 
   const selectedProfile = useMemo(
     () => profiles.find((p) => p.id === selectedId),
@@ -251,6 +313,7 @@ export default function ManagerProfilesPage() {
       const list = await api<User[]>("/users", undefined, authToken);
       const filtered = list.filter((u) => u.role === "BIDDER" && u.isActive !== false);
       setBidders(filtered);
+      setAllUsers(list);
       const fallbackId = filtered[0]?.id;
       if (fallbackId) {
         setAssignBidderId((current) => current || fallbackId);
@@ -310,6 +373,8 @@ export default function ManagerProfilesPage() {
       setBaseResumeEducationOpen([]);
       setResumePreviewOpen(false);
       setResumeExportError("");
+      setBaseBulletCountsDraft({});
+      setBaseBulletCountsEdit(false);
       return;
     }
     const normalizedBaseResume = normalizeBaseResume(selectedProfile.baseResume);
@@ -321,11 +386,15 @@ export default function ManagerProfilesPage() {
     setBaseResumeWorkOpen(normalizedBaseResume.workExperience?.map(() => true) ?? []);
     setBaseResumeEducationOpen(normalizedBaseResume.education?.map(() => true) ?? []);
     setSectionState(DEFAULT_SECTION_STATE);
+    setBaseBulletCountsDraft(selectedProfile.baseAdditionalBullets ?? {});
+    setBaseBulletCountsEdit(false);
     if (activeAssignment) {
       setAssignBidderId(activeAssignment.bidderUserId);
-    } else if (bidders[0]) {
-      setAssignBidderId(bidders[0].id);
+    } else {
+      setAssignBidderId("");
     }
+    setAssignBidderIdPending("");
+    setConfirmAssignOpen(false);
   }, [activeAssignment, bidders, selectedProfile, token]);
 
   useEffect(() => {
@@ -351,16 +420,20 @@ export default function ManagerProfilesPage() {
           body: JSON.stringify({
             displayName: selectedProfile.displayName,
             baseInfo: basePayload,
+            baseAdditionalBullets: baseBulletCountsDraft,
           }),
         },
         token,
       );
       setProfiles((prev) =>
         prev.map((p) =>
-          p.id === updated.id ? { ...updated, baseInfo: cleanBaseInfo(updated.baseInfo) } : p,
+          p.id === updated.id
+            ? { ...updated, baseInfo: cleanBaseInfo(updated.baseInfo), baseAdditionalBullets: updated.baseAdditionalBullets }
+            : p,
         ),
       );
       setDraftBase(cleanBaseInfo(updated.baseInfo));
+      setBaseBulletCountsDraft(updated.baseAdditionalBullets ?? {});
       if (sectionKey) setSectionEdit(sectionKey, false);
     } catch (err) {
       console.error(err);
@@ -416,6 +489,7 @@ export default function ManagerProfilesPage() {
       );
       setBaseResumeDraft(normalizeBaseResume(updated.baseResume));
       setBaseResumeEdit(false);
+      setConfirmSaveBaseResumeOpen(false);
     } catch (err) {
       console.error(err);
       setBaseResumeError("Could not save base resume.");
@@ -428,6 +502,21 @@ export default function ManagerProfilesPage() {
     setBaseResumeDraft(normalizeBaseResume(selectedProfile?.baseResume));
     setBaseResumeError("");
     setBaseResumeEdit(false);
+    setConfirmCancelBaseResumeOpen(false);
+  }
+
+  function handleExportBaseResumeJson() {
+    if (!selectedProfile) return;
+    const jsonString = serializeBaseResume(selectedProfile.baseResume);
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${selectedProfile.displayName.replace(/[^a-z0-9]/gi, "_").toLowerCase()}_base_resume.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
   function handleOpenResumePreview() {
@@ -758,50 +847,11 @@ export default function ManagerProfilesPage() {
 
   return (
     <ManagerShell>
-      <div className="grid gap-6 lg:grid-cols-[280px,1fr]">
-        <aside className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="text-xs uppercase tracking-[0.28em] text-slate-500">Profiles</div>
-                <button
-                  onClick={() => {
-                    setAddOpen(true);
-                    setDetailOpen(false);
-                    setSelectedId("");
-                    setCreateForm(getEmptyCreateForm());
-                  }}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                >
-                  Add profile
-                </button>
-          </div>
-          <div className="space-y-2">
-            {profiles.length === 0 ? (
-              <div className="text-sm text-slate-600">No profiles available.</div>
-            ) : (
-              profiles.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    setSelectedId(p.id);
-                    setDetailOpen(true);
-                    setSectionState(DEFAULT_SECTION_STATE);
-                  }}
-                  className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
-                    selectedId === p.id
-                      ? "bg-slate-100 text-slate-900 border border-slate-200"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="font-semibold">{p.displayName}</div>
-                  <div className="text-xs text-slate-500">
-                    Updated {new Date(p.updatedAt).toLocaleDateString()}
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </aside>
-
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Manager</p>
+          <h1 className="text-3xl font-semibold text-slate-900">Profile management</h1>
+        </div>
         <section className="space-y-6">
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -809,235 +859,509 @@ export default function ManagerProfilesPage() {
             </div>
           )}
 
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Profiles</h2>
+                  <p className="text-xs text-slate-500">{filteredProfiles.length} of {profiles.length} total</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setAddOpen(true);
+                    setDetailOpen(false);
+                    setSelectedId("");
+                    setCreateForm(getEmptyCreateForm());
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-[#6366f1] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_25px_-16px_rgba(99,102,241,0.8)] transition hover:brightness-110"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add profile
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by profile name..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                  />
+                </div>
+                <select
+                  value={filterCreatedBy}
+                  onChange={(e) => setFilterCreatedBy(e.target.value)}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                >
+                  <option value="">All Creators</option>
+                  {Array.from(new Set(profiles.map((p) => p.createdBy).filter((id): id is string => Boolean(id)))).map((createdById) => {
+                    const creator = allUsers.find((u) => u.id === createdById);
+                    return (
+                      <option key={createdById} value={createdById}>
+                        {creator?.userName || creator?.name || createdById}
+                      </option>
+                    );
+                  })}
+                </select>
+                <select
+                  value={filterAssignedBy}
+                  onChange={(e) => setFilterAssignedBy(e.target.value)}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                >
+                  <option value="">All Assignments</option>
+                  <option value="unassigned">Unassigned</option>
+                  {bidders.map((bidder) => (
+                    <option key={bidder.id} value={bidder.id}>
+                      {bidder.userName || bidder.name}
+                    </option>
+                  ))}
+                </select>
+                {(searchQuery || filterCreatedBy || filterAssignedBy) && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setFilterCreatedBy("");
+                      setFilterAssignedBy("");
+                    }}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              {filteredProfiles.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-slate-600">
+                  {profiles.length === 0 ? "No profiles available." : "No profiles match the filters."}
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">No</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Profile Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">CreatedBy</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Updated_at</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Assigned</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {filteredProfiles.map((profile, index) => {
+                      const active = profile.id === selectedId;
+                      const assignment = assignments.find((a) => a.profileId === profile.id && !a.unassignedAt);
+                      const assignedBidder = assignment ? bidders.find((b) => b.id === assignment.bidderUserId) : null;
+                      const creator = profile.createdBy ? allUsers.find((u) => u.id === profile.createdBy) : null;
+                      return (
+                        <tr
+                          key={profile.id}
+                          onClick={() => {
+                            setSelectedId(profile.id);
+                            setDetailOpen(true);
+                            setSectionState(DEFAULT_SECTION_STATE);
+                          }}
+                          className={`cursor-pointer transition ${
+                            active
+                              ? "bg-slate-100"
+                              : "bg-white hover:bg-slate-50"
+                          }`}
+                        >
+                          <td className="px-4 py-3 text-sm text-slate-700">{index + 1}</td>
+                          <td className="px-4 py-3 text-sm font-semibold text-slate-900">{profile.displayName}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{creator?.userName || creator?.name || profile.createdBy || "N/A"}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{formatDate(profile.updatedAt)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">{assignedBidder?.userName || assignedBidder?.name || "Unassigned"}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedId(profile.id);
+                                  setDetailOpen(true);
+                                  setSectionState(DEFAULT_SECTION_STATE);
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800 shadow-sm transition hover:bg-slate-100"
+                                title="View/Edit"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedId(profile.id);
+                                  setConfirmDeleteOpen(true);
+                                }}
+                                disabled={deleteLoading}
+                                className="flex h-8 w-8 items-center justify-center rounded-full border border-red-200 bg-white text-red-600 shadow-sm transition hover:bg-red-50 disabled:opacity-60"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
           <div
-            className={`fixed top-0 right-0 z-40 h-full w-full max-w-2xl transform border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 ${detailOpen ? "translate-x-0" : "translate-x-full"}`}
+            className={`fixed top-[57px] right-0 z-40 h-[calc(100vh-57px)] w-full max-w-2xl transform border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 ${detailOpen ? "translate-x-0" : "translate-x-full"}`}
           >
             {selectedProfile ? (
               <div className="flex h-full flex-col overflow-y-auto p-6">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-start justify-between gap-4 mb-6">
+                  <div className="flex-1 min-w-0">
                     <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Profile</p>
-                    <h1 className="text-2xl font-semibold text-slate-900">
+                    <h1 className="text-2xl font-semibold text-slate-900 mt-1">
                       {selectedProfile.displayName}
                     </h1>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm text-slate-600 mt-1">
                       Manage core details and contact information.
                     </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <IconButton
+                      onClick={() => {
+                        setConfirmDeleteOpen(true);
+                      }}
+                      title="Delete profile"
+                      disabled={deleteLoading}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span className={srOnly}>Delete</span>
+                    </IconButton>
+                    <IconButton
+                      onClick={() => {
+                        setDetailOpen(false);
+                        setSelectedId("");
+                      }}
+                      title="Close profile view"
+                    >
+                      <X className="w-4 h-4" />
+                      <span className={srOnly}>Close</span>
+                    </IconButton>
                   </div>
                 </div>
 
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
-                        Assignment
-                      </p>
-                      <p className="text-sm text-slate-600">
-                        Link this profile to an active bidder.
-                      </p>
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {activeAssignment
-                        ? `Assigned since ${new Date(activeAssignment.assignedAt).toLocaleDateString()}`
-                        : "Unassigned"}
-                    </div>
+                  <div className="mb-3">
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
+                      Assignment
+                    </p>
+                    <p className="text-sm text-slate-600 mt-1">
+                      Link this profile to an active bidder.
+                    </p>
                   </div>
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm font-medium text-slate-700">Assigned to:</label>
                     <select
-                      value={assignBidderId}
-                      onChange={(e) => setAssignBidderId(e.target.value)}
-                      className="w-full md:w-auto rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                      value={activeAssignment?.bidderUserId || ""}
+                      onChange={(e) => {
+                        const newBidderId = e.target.value;
+                        const currentBidderId = activeAssignment?.bidderUserId || "";
+                        if (newBidderId !== currentBidderId) {
+                          setAssignBidderIdPending(newBidderId);
+                          setConfirmAssignOpen(true);
+                        }
+                      }}
+                      className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
                     >
+                      <option value="">None</option>
                       {bidders.map((b) => (
                         <option key={b.id} value={b.id}>
-                          {b.name}
+                          {b.userName}
                         </option>
                       ))}
                     </select>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleAssign}
-                        disabled={assignLoading || !assignBidderId}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {assignLoading ? "Saving..." : activeAssignment ? "Update" : "Assign"}
-                      </button>
-                      {activeAssignment && (
-                        <button
-                          onClick={() => handleUnassign(activeAssignment.id)}
-                          disabled={assignLoading}
-                          className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Unassign
-                        </button>
-                      )}
-                    </div>
                   </div>
                 </div>
 
-                <div className="mt-6 grid gap-3 md:grid-cols-2">
-                  <SectionHeader
-                    title="Contact"
-                    state={sectionState.contact}
-                    onToggleShow={() => toggleSection("contact", "show")}
-                    onEdit={() => startSectionEdit("contact")}
-                    onSave={() => {
-                      if (saving) return;
-                      saveSection("contact");
-                    }}
-                    onCancel={() => cancelSectionEdit("contact")}
-                  />
-                  {sectionState.contact.show
-                    ? sectionState.contact.edit
-                      ? (
-                        <>
-                          <LabeledInput label="First name" value={draft.name?.first ?? ""} onChange={(v) => updateBase("name.first", v)} />
-                          <LabeledInput label="Last name" value={draft.name?.last ?? ""} onChange={(v) => updateBase("name.last", v)} />
-                          <LabeledInput label="Email" value={draft.contact?.email ?? ""} onChange={(v) => updateBase("contact.email", v)} />
-                          <LabeledInput label="Phone code" value={draft.contact?.phoneCode ?? ""} onChange={(v) => updateBase("contact.phoneCode", v)} />
-                          <LabeledInput label="Phone number" value={draft.contact?.phoneNumber ?? ""} onChange={(v) => updateBase("contact.phoneNumber", v)} />
-                          <LabeledInput label="LinkedIn" value={draft.links?.linkedin ?? ""} onChange={(v) => updateBase("links.linkedin", v)} />
-                        </>
-                      )
-                      : (
-                        <>
-                          <ReadRow label="First name" value={draft.name?.first ?? "-"} />
-                          <ReadRow label="Last name" value={draft.name?.last ?? "-"} />
-                          <ReadRow label="Email" value={draft.contact?.email ?? "-"} />
-                          <ReadRow label="Phone code" value={draft.contact?.phoneCode ?? "-"} />
-                          <ReadRow label="Phone number" value={draft.contact?.phoneNumber ?? "-"} />
-                          <ReadRow label="Phone (combined)" value={formatPhone(draft.contact)} />
-                          <ReadRow label="LinkedIn" value={draft.links?.linkedin ?? "-"} />
-                        </>
-                      )
-                    : null}
+                <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="space-y-4">
+                    <div>
+                      <SectionHeader
+                        title="Contact"
+                        state={sectionState.contact}
+                        onToggleShow={() => toggleSection("contact", "show")}
+                        onEdit={() => startSectionEdit("contact")}
+                        onSave={() => {
+                          if (saving) return;
+                          confirmSaveSection("contact");
+                        }}
+                        onCancel={() => confirmCancelSection("contact")}
+                      />
+                      {sectionState.contact.show
+                        ? sectionState.contact.edit
+                          ? (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <LabeledInput label="First name" value={draft.name?.first ?? ""} onChange={(v) => updateBase("name.first", v)} />
+                              <LabeledInput label="Last name" value={draft.name?.last ?? ""} onChange={(v) => updateBase("name.last", v)} />
+                              <LabeledInput label="Email" value={draft.contact?.email ?? ""} onChange={(v) => updateBase("contact.email", v)} />
+                              <LabeledInput label="Phone code" value={draft.contact?.phoneCode ?? ""} onChange={(v) => updateBase("contact.phoneCode", v)} />
+                              <LabeledInput label="Phone number" value={draft.contact?.phoneNumber ?? ""} onChange={(v) => updateBase("contact.phoneNumber", v)} />
+                              <LabeledInput label="LinkedIn" value={draft.links?.linkedin ?? ""} onChange={(v) => updateBase("links.linkedin", v)} />
+                            </div>
+                          )
+                          : (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <ReadRow label="First name" value={draft.name?.first ?? "-"} />
+                              <ReadRow label="Last name" value={draft.name?.last ?? "-"} />
+                              <ReadRow label="Email" value={draft.contact?.email ?? "-"} />
+                              <ReadRow label="Phone code" value={draft.contact?.phoneCode ?? "-"} />
+                              <ReadRow label="Phone number" value={draft.contact?.phoneNumber ?? "-"} />
+                              <ReadRow label="Phone (combined)" value={formatPhone(draft.contact)} />
+                              <ReadRow label="LinkedIn" value={draft.links?.linkedin ?? "-"} />
+                            </div>
+                          )
+                        : null}
+                    </div>
 
-                  <SectionHeader
-                    title="Location"
-                    state={sectionState.location}
-                    onToggleShow={() => toggleSection("location", "show")}
-                    onEdit={() => startSectionEdit("location")}
-                    onSave={() => {
-                      if (saving) return;
-                      saveSection("location");
-                    }}
-                    onCancel={() => cancelSectionEdit("location")}
-                  />
-                  {sectionState.location.show
-                    ? sectionState.location.edit
-                      ? (
-                        <>
-                          <LabeledInput label="Address" value={draft.location?.address ?? ""} onChange={(v) => updateBase("location.address", v)} />
-                          <LabeledInput label="City" value={draft.location?.city ?? ""} onChange={(v) => updateBase("location.city", v)} />
-                          <LabeledInput label="State / Province" value={draft.location?.state ?? ""} onChange={(v) => updateBase("location.state", v)} />
-                          <LabeledInput label="Country" value={draft.location?.country ?? ""} onChange={(v) => updateBase("location.country", v)} />
-                          <LabeledInput label="Postal code" value={draft.location?.postalCode ?? ""} onChange={(v) => updateBase("location.postalCode", v)} />
-                        </>
-                      )
-                      : (
-                        <>
-                          <ReadRow label="Address" value={draft.location?.address ?? "-"} />
-                          <ReadRow label="City" value={draft.location?.city ?? "-"} />
-                          <ReadRow label="State / Province" value={draft.location?.state ?? "-"} />
-                          <ReadRow label="Country" value={draft.location?.country ?? "-"} />
-                          <ReadRow label="Postal code" value={draft.location?.postalCode ?? "-"} />
-                        </>
-                      )
-                    : null}
+                    <div className="border-t border-slate-200 pt-4">
+                      <SectionHeader
+                        title="Location"
+                        state={sectionState.location}
+                        onToggleShow={() => toggleSection("location", "show")}
+                        onEdit={() => startSectionEdit("location")}
+                        onSave={() => {
+                          if (saving) return;
+                          confirmSaveSection("location");
+                        }}
+                        onCancel={() => confirmCancelSection("location")}
+                      />
+                      {sectionState.location.show
+                        ? sectionState.location.edit
+                          ? (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <LabeledInput label="Address" value={draft.location?.address ?? ""} onChange={(v) => updateBase("location.address", v)} />
+                              <LabeledInput label="City" value={draft.location?.city ?? ""} onChange={(v) => updateBase("location.city", v)} />
+                              <LabeledInput label="State / Province" value={draft.location?.state ?? ""} onChange={(v) => updateBase("location.state", v)} />
+                              <LabeledInput label="Country" value={draft.location?.country ?? ""} onChange={(v) => updateBase("location.country", v)} />
+                              <LabeledInput label="Postal code" value={draft.location?.postalCode ?? ""} onChange={(v) => updateBase("location.postalCode", v)} />
+                            </div>
+                          )
+                          : (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <ReadRow label="Address" value={draft.location?.address ?? "-"} />
+                              <ReadRow label="City" value={draft.location?.city ?? "-"} />
+                              <ReadRow label="State / Province" value={draft.location?.state ?? "-"} />
+                              <ReadRow label="Country" value={draft.location?.country ?? "-"} />
+                              <ReadRow label="Postal code" value={draft.location?.postalCode ?? "-"} />
+                            </div>
+                          )
+                        : null}
+                    </div>
 
-                  <SectionHeader
-                    title="Career"
-                    state={sectionState.career}
-                    onToggleShow={() => toggleSection("career", "show")}
-                    onEdit={() => startSectionEdit("career")}
-                    onSave={() => {
-                      if (saving) return;
-                      saveSection("career");
-                    }}
-                    onCancel={() => cancelSectionEdit("career")}
-                  />
-                  {sectionState.career.show
-                    ? sectionState.career.edit
-                      ? (
-                        <>
-                          <LabeledInput label="Job title" value={draft.career?.jobTitle ?? ""} onChange={(v) => updateBase("career.jobTitle", v)} />
-                          <LabeledInput label="Current company" value={draft.career?.currentCompany ?? ""} onChange={(v) => updateBase("career.currentCompany", v)} />
-                          <LabeledInput label="Years of experience" value={(draft.career?.yearsExp as string) ?? ""} onChange={(v) => updateBase("career.yearsExp", v)} />
-                          <LabeledInput label="Desired salary" value={draft.career?.desiredSalary ?? ""} onChange={(v) => updateBase("career.desiredSalary", v)} />
-                        </>
-                      )
-                      : (
-                        <>
-                          <ReadRow label="Job title" value={draft.career?.jobTitle ?? "-"} />
-                          <ReadRow label="Current company" value={draft.career?.currentCompany ?? "-"} />
-                          <ReadRow label="Years of experience" value={(draft.career?.yearsExp as string) ?? "-"} />
-                          <ReadRow label="Desired salary" value={draft.career?.desiredSalary ?? "-"} />
-                        </>
-                      )
-                    : null}
+                    <div className="border-t border-slate-200 pt-4">
+                      <SectionHeader
+                        title="Career"
+                        state={sectionState.career}
+                        onToggleShow={() => toggleSection("career", "show")}
+                        onEdit={() => startSectionEdit("career")}
+                        onSave={() => {
+                          if (saving) return;
+                          confirmSaveSection("career");
+                        }}
+                        onCancel={() => confirmCancelSection("career")}
+                      />
+                      {sectionState.career.show
+                        ? sectionState.career.edit
+                          ? (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <LabeledInput label="Job title" value={draft.career?.jobTitle ?? ""} onChange={(v) => updateBase("career.jobTitle", v)} />
+                              <LabeledInput label="Current company" value={draft.career?.currentCompany ?? ""} onChange={(v) => updateBase("career.currentCompany", v)} />
+                              <LabeledInput label="Years of experience" value={(draft.career?.yearsExp as string) ?? ""} onChange={(v) => updateBase("career.yearsExp", v)} />
+                              <LabeledInput label="Desired salary" value={draft.career?.desiredSalary ?? ""} onChange={(v) => updateBase("career.desiredSalary", v)} />
+                            </div>
+                          )
+                          : (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <ReadRow label="Job title" value={draft.career?.jobTitle ?? "-"} />
+                              <ReadRow label="Current company" value={draft.career?.currentCompany ?? "-"} />
+                              <ReadRow label="Years of experience" value={(draft.career?.yearsExp as string) ?? "-"} />
+                              <ReadRow label="Desired salary" value={draft.career?.desiredSalary ?? "-"} />
+                            </div>
+                          )
+                        : null}
+                    </div>
 
-                  <SectionHeader
-                    title="Education"
-                    state={sectionState.education}
-                    onToggleShow={() => toggleSection("education", "show")}
-                    onEdit={() => startSectionEdit("education")}
-                    onSave={() => {
-                      if (saving) return;
-                      saveSection("education");
-                    }}
-                    onCancel={() => cancelSectionEdit("education")}
-                  />
-                  {sectionState.education.show
-                    ? sectionState.education.edit
-                      ? (
-                        <>
-                          <LabeledInput label="School" value={draft.education?.school ?? ""} onChange={(v) => updateBase("education.school", v)} />
-                          <LabeledInput label="Degree" value={draft.education?.degree ?? ""} onChange={(v) => updateBase("education.degree", v)} />
-                          <LabeledInput label="Major / field" value={draft.education?.majorField ?? ""} onChange={(v) => updateBase("education.majorField", v)} />
-                          <LabeledInput label="Graduation date" value={draft.education?.graduationAt ?? ""} onChange={(v) => updateBase("education.graduationAt", v)} />
-                        </>
-                      )
-                      : (
-                        <>
-                          <ReadRow label="School" value={draft.education?.school ?? "-"} />
-                          <ReadRow label="Degree" value={draft.education?.degree ?? "-"} />
-                          <ReadRow label="Major / field" value={draft.education?.majorField ?? "-"} />
-                          <ReadRow label="Graduation date" value={draft.education?.graduationAt ?? "-"} />
-                        </>
-                      )
-                    : null}
+                    <div className="border-t border-slate-200 pt-4">
+                      <SectionHeader
+                        title="Education"
+                        state={sectionState.education}
+                        onToggleShow={() => toggleSection("education", "show")}
+                        onEdit={() => startSectionEdit("education")}
+                        onSave={() => {
+                          if (saving) return;
+                          confirmSaveSection("education");
+                        }}
+                        onCancel={() => confirmCancelSection("education")}
+                      />
+                      {sectionState.education.show
+                        ? sectionState.education.edit
+                          ? (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <LabeledInput label="School" value={draft.education?.school ?? ""} onChange={(v) => updateBase("education.school", v)} />
+                              <LabeledInput label="Degree" value={draft.education?.degree ?? ""} onChange={(v) => updateBase("education.degree", v)} />
+                              <LabeledInput label="Major / field" value={draft.education?.majorField ?? ""} onChange={(v) => updateBase("education.majorField", v)} />
+                              <LabeledInput label="Graduation date" value={draft.education?.graduationAt ?? ""} onChange={(v) => updateBase("education.graduationAt", v)} />
+                            </div>
+                          )
+                          : (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <ReadRow label="School" value={draft.education?.school ?? "-"} />
+                              <ReadRow label="Degree" value={draft.education?.degree ?? "-"} />
+                              <ReadRow label="Major / field" value={draft.education?.majorField ?? "-"} />
+                              <ReadRow label="Graduation date" value={draft.education?.graduationAt ?? "-"} />
+                            </div>
+                          )
+                        : null}
+                    </div>
 
-                  <SectionHeader
-                    title="Authorized to work"
-                    state={sectionState.workAuth}
-                    onToggleShow={() => toggleSection("workAuth", "show")}
-                    onEdit={() => startSectionEdit("workAuth")}
-                    onSave={() => {
-                      if (saving) return;
-                      saveSection("workAuth");
-                    }}
-                    onCancel={() => cancelSectionEdit("workAuth")}
-                  />
-                  {sectionState.workAuth.show
-                    ? sectionState.workAuth.edit
-                      ? (
-                        <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(draft.workAuth?.authorized)}
-                            onChange={(e) => updateBase("workAuth.authorized", e.target.checked)}
-                            className="h-4 w-4 rounded border-slate-300 text-[#0b1224]"
-                          />
-                          Authorized to work
-                        </label>
-                      )
-                      : (
-                        <ReadRow
-                          label="Authorized to work"
-                          value={draft.workAuth?.authorized ? "Yes" : "No"}
-                        />
-                      )
-                    : null}
+                    <div className="border-t border-slate-200 pt-4">
+                      <SectionHeader
+                        title="Authorized to work"
+                        state={sectionState.workAuth}
+                        onToggleShow={() => toggleSection("workAuth", "show")}
+                        onEdit={() => startSectionEdit("workAuth")}
+                        onSave={() => {
+                          if (saving) return;
+                          confirmSaveSection("workAuth");
+                        }}
+                        onCancel={() => confirmCancelSection("workAuth")}
+                      />
+                      {sectionState.workAuth.show
+                        ? sectionState.workAuth.edit
+                          ? (
+                            <div className="mt-3">
+                              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(draft.workAuth?.authorized)}
+                                  onChange={(e) => updateBase("workAuth.authorized", e.target.checked)}
+                                  className="h-4 w-4 rounded border-slate-300 text-[#0b1224]"
+                                />
+                                Authorized to work
+                              </label>
+                            </div>
+                          )
+                          : (
+                            <div className="mt-3">
+                              <ReadRow
+                                label="Authorized to work"
+                                value={draft.workAuth?.authorized ? "Yes" : "No"}
+                              />
+                            </div>
+                          )
+                        : null}
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
+                            Base Additional Bullets
+                          </p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            Set default number of additional bullets per company for resume generation
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {baseBulletCountsEdit ? (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  if (saving) return;
+                                  await handleSaveProfile();
+                                  setBaseBulletCountsEdit(false);
+                                }}
+                                disabled={saving}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-white transition hover:bg-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-wait disabled:opacity-60"
+                                title="Save"
+                              >
+                                <Save className="h-4 w-4" />
+                                <span className={srOnly}>Save</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setBaseBulletCountsDraft(selectedProfile?.baseAdditionalBullets ?? {});
+                                  setBaseBulletCountsEdit(false);
+                                }}
+                                disabled={saving}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-wait disabled:opacity-60"
+                                title="Cancel"
+                              >
+                                <XCircle className="h-4 w-4" />
+                                <span className={srOnly}>Cancel</span>
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setBaseBulletCountsEdit(true);
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                              title="Edit base bullet counts"
+                            >
+                              <Pencil className="h-4 w-4" />
+                              <span className={srOnly}>Edit</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {(() => {
+                        const workExp = baseResumeDraft.workExperience ?? [];
+                        const companyKeys = workExp.map(buildCompanyTitleKey).filter(Boolean);
+                        if (companyKeys.length === 0) {
+                          return (
+                            <div className="mt-3 text-sm text-slate-500">
+                              Add work experience entries to set base bullet counts
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="mt-3 space-y-3">
+                            {companyKeys.map((key) => (
+                              <div key={key} className="flex items-center gap-3">
+                                <label className="flex-1 text-sm text-slate-700">{key}</label>
+                                {baseBulletCountsEdit ? (
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={baseBulletCountsDraft[key] ?? ""}
+                                    onChange={(e) => {
+                                      const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);
+                                      setBaseBulletCountsDraft((prev) => {
+                                        if (value === undefined || isNaN(value)) {
+                                          const next = { ...prev };
+                                          delete next[key];
+                                          return next;
+                                        }
+                                        return { ...prev, [key]: value };
+                                      });
+                                    }}
+                                    className="w-20 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                                    placeholder="0"
+                                  />
+                                ) : (
+                                  <div className="w-20 text-right text-sm font-semibold text-slate-900">
+                                    {baseBulletCountsDraft[key] ?? "-"}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -1051,12 +1375,13 @@ export default function ManagerProfilesPage() {
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
+                      <IconButton
                         onClick={handleOpenResumePreview}
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100"
+                        title="Preview resume"
                       >
-                        Preview
-                      </button>
+                        <Eye className="w-4 h-4" />
+                        <span className={srOnly}>Preview</span>
+                      </IconButton>
                       <input
                         ref={baseResumeInputRef}
                         type="file"
@@ -1070,43 +1395,55 @@ export default function ManagerProfilesPage() {
                           e.currentTarget.value = "";
                         }}
                       />
-                      <button
+                      <IconButton
                         onClick={() => {
                           if (!baseResumeEdit) setBaseResumeEdit(true);
                           baseResumeInputRef.current?.click();
                         }}
                         disabled={savingBaseResume}
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        title="Import JSON"
                       >
-                        Import JSON
-                      </button>
+                        <FileJson className="w-4 h-4" />
+                        <span className={srOnly}>Import JSON</span>
+                      </IconButton>
+                      <IconButton
+                        onClick={handleExportBaseResumeJson}
+                        disabled={!selectedProfile || savingBaseResume}
+                        title="Export JSON"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span className={srOnly}>Export JSON</span>
+                      </IconButton>
                       {baseResumeEdit ? (
                         <>
-                          <button
-                            onClick={handleSaveBaseResume}
+                          <IconButton
+                            onClick={() => setConfirmSaveBaseResumeOpen(true)}
                             disabled={savingBaseResume || !baseResumeDirty}
-                            className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                            title="Save base resume"
                           >
-                            {savingBaseResume ? "Saving..." : "Save"}
-                          </button>
-                          <button
-                            onClick={handleCancelBaseResume}
+                            <Save className="w-4 h-4" />
+                            <span className={srOnly}>Save</span>
+                          </IconButton>
+                          <IconButton
+                            onClick={() => setConfirmCancelBaseResumeOpen(true)}
                             disabled={savingBaseResume}
-                            className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            title="Cancel editing"
                           >
-                            Cancel
-                          </button>
+                            <XCircle className="w-4 h-4" />
+                            <span className={srOnly}>Cancel</span>
+                          </IconButton>
                         </>
                       ) : (
-                        <button
+                        <IconButton
                           onClick={() => {
                             setBaseResumeEdit(true);
                             setBaseResumeError("");
                           }}
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100"
+                          title="Edit base resume"
                         >
-                          Edit
-                        </button>
+                          <Pencil className="w-4 h-4" />
+                          <span className={srOnly}>Edit</span>
+                        </IconButton>
                       )}
                     </div>
                   </div>
@@ -1119,15 +1456,27 @@ export default function ManagerProfilesPage() {
                         <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
                           Profile
                         </p>
-                        <IconButton
+                        <button
                           onClick={() => toggleBaseResumeSection("profile")}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                           title={baseResumeSections.profile ? "Hide section" : "Show section"}
                         >
-                          <TriangleIcon direction={baseResumeSections.profile ? "down" : "left"} />
+                          <svg
+                            className={`h-4 w-4 transition-transform ${
+                              baseResumeSections.profile ? "rotate-90" : ""
+                            }`}
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
                           <span className={srOnly}>
                             {baseResumeSections.profile ? "Hide profile" : "Show profile"}
                           </span>
-                        </IconButton>
+                        </button>
                       </div>
                       {baseResumeSections.profile ? (
                         <div className="grid gap-3 md:grid-cols-2">
@@ -1176,15 +1525,27 @@ export default function ManagerProfilesPage() {
                         <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
                           Summary
                         </p>
-                        <IconButton
+                        <button
                           onClick={() => toggleBaseResumeSection("summary")}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                           title={baseResumeSections.summary ? "Hide section" : "Show section"}
                         >
-                          <TriangleIcon direction={baseResumeSections.summary ? "down" : "left"} />
+                          <svg
+                            className={`h-4 w-4 transition-transform ${
+                              baseResumeSections.summary ? "rotate-90" : ""
+                            }`}
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
                           <span className={srOnly}>
                             {baseResumeSections.summary ? "Hide summary" : "Show summary"}
                           </span>
-                        </IconButton>
+                        </button>
                       </div>
                       {baseResumeSections.summary ? (
                         <label className="space-y-1">
@@ -1208,23 +1569,36 @@ export default function ManagerProfilesPage() {
                           Work experience
                         </p>
                         <div className="flex items-center gap-2">
-                          <IconButton
+                          <button
                             onClick={() => toggleBaseResumeSection("work")}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                             title={baseResumeSections.work ? "Hide section" : "Show section"}
                           >
-                            <TriangleIcon direction={baseResumeSections.work ? "down" : "left"} />
+                            <svg
+                              className={`h-4 w-4 transition-transform ${
+                                baseResumeSections.work ? "rotate-90" : ""
+                              }`}
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M9 18l6-6-6-6" />
+                            </svg>
                             <span className={srOnly}>
                               {baseResumeSections.work ? "Hide work experience" : "Show work experience"}
                             </span>
-                          </IconButton>
+                          </button>
                           {baseResumeEdit ? (
-                            <button
+                            <IconButton
                               onClick={addWorkExperience}
                               disabled={baseResumeLocked}
-                              className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              title="Add role"
                             >
-                              Role +
-                            </button>
+                              <Plus className="w-4 h-4" />
+                              <span className={srOnly}>Add role</span>
+                            </IconButton>
                           ) : null}
                         </div>
                       </div>
@@ -1358,13 +1732,14 @@ export default function ManagerProfilesPage() {
                                       </div>
                                     ))}
                                     {baseResumeEdit ? (
-                                      <button
+                                      <IconButton
                                         onClick={() => addWorkExperienceBullet(index)}
                                         disabled={baseResumeLocked}
-                                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                        title="Add bullet"
                                       >
-                                        Add bullet
-                                      </button>
+                                        <Plus className="w-4 h-4" />
+                                        <span className={srOnly}>Add bullet</span>
+                                      </IconButton>
                                     ) : null}
                                   </div>
                                 </>
@@ -1381,25 +1756,36 @@ export default function ManagerProfilesPage() {
                           Education
                         </p>
                         <div className="flex items-center gap-2">
-                          <IconButton
+                          <button
                             onClick={() => toggleBaseResumeSection("education")}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                             title={baseResumeSections.education ? "Hide section" : "Show section"}
                           >
-                            <TriangleIcon
-                              direction={baseResumeSections.education ? "down" : "left"}
-                            />
+                            <svg
+                              className={`h-4 w-4 transition-transform ${
+                                baseResumeSections.education ? "rotate-90" : ""
+                              }`}
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M9 18l6-6-6-6" />
+                            </svg>
                             <span className={srOnly}>
                               {baseResumeSections.education ? "Hide education" : "Show education"}
                             </span>
-                          </IconButton>
+                          </button>
                           {baseResumeEdit ? (
-                            <button
+                            <IconButton
                               onClick={addEducation}
                               disabled={baseResumeLocked}
-                              className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              title="Add education"
                             >
-                              Education +
-                            </button>
+                              <Plus className="w-4 h-4" />
+                              <span className={srOnly}>Add education</span>
+                            </IconButton>
                           ) : null}
                         </div>
                       </div>
@@ -1511,13 +1897,14 @@ export default function ManagerProfilesPage() {
                                       </div>
                                     ))}
                                     {baseResumeEdit ? (
-                                      <button
+                                      <IconButton
                                         onClick={() => addEducationCoursework(index)}
                                         disabled={baseResumeLocked}
-                                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                        title="Add coursework"
                                       >
-                                        Add coursework
-                                      </button>
+                                        <Plus className="w-4 h-4" />
+                                        <span className={srOnly}>Add coursework</span>
+                                      </IconButton>
                                     ) : null}
                                   </div>
                                 </>
@@ -1534,23 +1921,36 @@ export default function ManagerProfilesPage() {
                           Skills
                         </p>
                         <div className="flex items-center gap-2">
-                          <IconButton
-                            onClick={() => toggleBaseResumeSection("skills")}
-                            title={baseResumeSections.skills ? "Hide section" : "Show section"}
+                        <button
+                          onClick={() => toggleBaseResumeSection("skills")}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                          title={baseResumeSections.skills ? "Hide section" : "Show section"}
+                        >
+                          <svg
+                            className={`h-4 w-4 transition-transform ${
+                              baseResumeSections.skills ? "rotate-90" : ""
+                            }`}
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
                           >
-                            <TriangleIcon direction={baseResumeSections.skills ? "down" : "left"} />
-                            <span className={srOnly}>
-                              {baseResumeSections.skills ? "Hide skills" : "Show skills"}
-                            </span>
-                          </IconButton>
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
+                          <span className={srOnly}>
+                            {baseResumeSections.skills ? "Hide skills" : "Show skills"}
+                          </span>
+                        </button>
                           {baseResumeEdit ? (
-                            <button
+                            <IconButton
                               onClick={addSkill}
                               disabled={baseResumeLocked}
-                              className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              title="Add skill"
                             >
-                              Add
-                            </button>
+                              <Plus className="w-4 h-4" />
+                              <span className={srOnly}>Add skill</span>
+                            </IconButton>
                           ) : null}
                         </div>
                       </div>
@@ -1583,6 +1983,267 @@ export default function ManagerProfilesPage() {
 
               </div>
             ) : null}
+
+            {confirmAssignOpen && selectedProfile && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+                <div
+                  className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-4">
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-amber-700">Confirm assignment change</p>
+                    <h3 className="text-xl font-semibold text-amber-900 mt-1">
+                      Are you sure to change {selectedProfile.displayName}'s Bidder From {activeAssignment ? (bidders.find(b => b.id === activeAssignment.bidderUserId)?.userName || "Unknown") : "None"} to {assignBidderIdPending ? (bidders.find(b => b.id === assignBidderIdPending)?.userName || "None") : "None"}?
+                    </h3>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setConfirmAssignOpen(false);
+                        setAssignBidderIdPending("");
+                      }}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-rose-300 bg-rose-500 text-white shadow-sm transition hover:bg-rose-600 hover:border-rose-400"
+                      title="No, cancel"
+                    >
+                      <X className="w-5 h-5" />
+                      <span className={srOnly}>No</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (assignBidderIdPending !== undefined) {
+                          void handleAssign(assignBidderIdPending);
+                        }
+                      }}
+                      disabled={assignLoading}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-emerald-300 bg-emerald-500 text-white shadow-sm transition hover:bg-emerald-600 hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Yes, confirm"
+                    >
+                      {assignLoading ? (
+                        <span className="w-5 h-5 animate-spin">⏳</span>
+                      ) : (
+                        <Check className="w-5 h-5" />
+                      )}
+                      <span className={srOnly}>Yes</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {confirmSaveSectionOpen && pendingSectionKey && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+                <div
+                  className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-4">
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-amber-700">Confirm save</p>
+                    <h3 className="text-xl font-semibold text-amber-900 mt-1">
+                      Are you sure save with current detail?
+                    </h3>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setConfirmSaveSectionOpen(false);
+                        setPendingSectionKey(null);
+                      }}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-rose-300 bg-rose-500 text-white shadow-sm transition hover:bg-rose-600 hover:border-rose-400"
+                      title="No, cancel"
+                    >
+                      <X className="w-5 h-5" />
+                      <span className={srOnly}>No</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (pendingSectionKey && !saving) {
+                          saveSection(pendingSectionKey);
+                          setConfirmSaveSectionOpen(false);
+                          setPendingSectionKey(null);
+                        }
+                      }}
+                      disabled={saving}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-emerald-300 bg-emerald-500 text-white shadow-sm transition hover:bg-emerald-600 hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Yes, confirm"
+                    >
+                      <Check className="w-5 h-5" />
+                      <span className={srOnly}>Yes</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {confirmCancelSectionOpen && pendingSectionKey && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+                <div
+                  className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-4">
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-amber-700">Confirm cancel</p>
+                    <h3 className="text-xl font-semibold text-amber-900 mt-1">
+                      Are you sure cancel editing resume, that will cause lost edited data?
+                    </h3>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setConfirmCancelSectionOpen(false);
+                        setPendingSectionKey(null);
+                      }}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-rose-300 bg-rose-500 text-white shadow-sm transition hover:bg-rose-600 hover:border-rose-400"
+                      title="No, cancel"
+                    >
+                      <X className="w-5 h-5" />
+                      <span className={srOnly}>No</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (pendingSectionKey) {
+                          cancelSectionEdit(pendingSectionKey);
+                          setConfirmCancelSectionOpen(false);
+                          setPendingSectionKey(null);
+                        }
+                      }}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-emerald-300 bg-emerald-500 text-white shadow-sm transition hover:bg-emerald-600 hover:border-emerald-400"
+                      title="Yes, confirm"
+                    >
+                      <Check className="w-5 h-5" />
+                      <span className={srOnly}>Yes</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {confirmSaveBaseResumeOpen && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+                <div
+                  className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-4">
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-amber-700">Confirm save</p>
+                    <h3 className="text-xl font-semibold text-amber-900 mt-1">
+                      Are you sure save with current detail?
+                    </h3>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setConfirmSaveBaseResumeOpen(false);
+                      }}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-rose-300 bg-rose-500 text-white shadow-sm transition hover:bg-rose-600 hover:border-rose-400"
+                      title="No, cancel"
+                    >
+                      <X className="w-5 h-5" />
+                      <span className={srOnly}>No</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        void handleSaveBaseResume();
+                      }}
+                      disabled={savingBaseResume || !baseResumeDirty}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-emerald-300 bg-emerald-500 text-white shadow-sm transition hover:bg-emerald-600 hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Yes, confirm"
+                    >
+                      {savingBaseResume ? (
+                        <span className="w-5 h-5 animate-spin">⏳</span>
+                      ) : (
+                        <Check className="w-5 h-5" />
+                      )}
+                      <span className={srOnly}>Yes</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {confirmCancelBaseResumeOpen && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+                <div
+                  className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-4">
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-amber-700">Confirm cancel</p>
+                    <h3 className="text-xl font-semibold text-amber-900 mt-1">
+                      Are you sure cancel editing resume, that will cause lost edited data?
+                    </h3>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setConfirmCancelBaseResumeOpen(false);
+                      }}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-rose-300 bg-rose-500 text-white shadow-sm transition hover:bg-rose-600 hover:border-rose-400"
+                      title="No, cancel"
+                    >
+                      <X className="w-5 h-5" />
+                      <span className={srOnly}>No</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleCancelBaseResume();
+                      }}
+                      disabled={savingBaseResume}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-emerald-300 bg-emerald-500 text-white shadow-sm transition hover:bg-emerald-600 hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Yes, confirm"
+                    >
+                      <Check className="w-5 h-5" />
+                      <span className={srOnly}>Yes</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {confirmDeleteOpen && selectedProfile && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+                <div
+                  className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="mb-4">
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-amber-700">Confirm delete</p>
+                    <h3 className="text-xl font-semibold text-amber-900 mt-1">
+                      Are you sure you want to delete profile '{selectedProfile.displayName}'?
+                    </h3>
+                    <p className="text-sm text-amber-800 mt-2">
+                      This action cannot be undone.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setConfirmDeleteOpen(false);
+                      }}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-rose-300 bg-rose-500 text-white shadow-sm transition hover:bg-rose-600 hover:border-rose-400"
+                      title="No, cancel"
+                    >
+                      <X className="w-5 h-5" />
+                      <span className={srOnly}>No</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        void handleDeleteProfile();
+                      }}
+                      disabled={deleteLoading}
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-emerald-300 bg-emerald-500 text-white shadow-sm transition hover:bg-emerald-600 hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Yes, confirm"
+                    >
+                      {deleteLoading ? (
+                        <span className="w-5 h-5 animate-spin">⏳</span>
+                      ) : (
+                        <Check className="w-5 h-5" />
+                      )}
+                      <span className={srOnly}>Yes</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {addOpen && (
@@ -1590,18 +2251,19 @@ export default function ManagerProfilesPage() {
               className="fixed top-0 right-0 z-50 h-full w-full max-w-2xl transform border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300"
             >
               <div className="flex h-full flex-col overflow-y-auto p-6">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-start justify-between gap-4 mb-6">
+                  <div className="flex-1 min-w-0">
                     <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Create profile</p>
-                    <h1 className="text-2xl font-semibold text-slate-900">New profile</h1>
-                    <p className="text-sm text-slate-600">Provide display name and optional contact info.</p>
+                    <h1 className="text-2xl font-semibold text-slate-900 mt-1">New profile</h1>
+                    <p className="text-sm text-slate-600 mt-1">Provide display name and optional contact info.</p>
                   </div>
-                  <button
+                  <IconButton
                     onClick={() => setAddOpen(false)}
-                    className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                    title="Close"
                   >
-                    Close
-                  </button>
+                    <X className="w-4 h-4" />
+                    <span className={srOnly}>Close</span>
+                  </IconButton>
                 </div>
                 <div className="mt-6 grid gap-3 md:grid-cols-2">
                   <LabeledInput
@@ -1746,28 +2408,32 @@ export default function ManagerProfilesPage() {
                     ) : null}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
+                    <IconButton
                       onClick={handleDownloadResumePdf}
                       disabled={resumePdfLoading || !resumePreviewHtml.trim()}
-                      className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                      title={resumePdfLoading ? "Saving PDF..." : "Save PDF"}
                     >
-                      {resumePdfLoading ? "Saving..." : "Save PDF"}
-                    </button>
-                    <button
-                      type="button"
+                      {resumePdfLoading ? (
+                        <span className="w-4 h-4 animate-spin">⏳</span>
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      <span className={srOnly}>{resumePdfLoading ? "Saving..." : "Save PDF"}</span>
+                    </IconButton>
+                    <IconButton
                       onClick={() => router.push("/manager/resume-templates")}
-                      className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                      title="Manage templates"
                     >
-                      Manage templates
-                    </button>
-                    <button
-                      type="button"
+                      <Settings className="w-4 h-4" />
+                      <span className={srOnly}>Manage templates</span>
+                    </IconButton>
+                    <IconButton
                       onClick={() => setResumePreviewOpen(false)}
-                      className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                      title="Close preview"
                     >
-                      Close
-                    </button>
+                      <X className="w-4 h-4" />
+                      <span className={srOnly}>Close</span>
+                    </IconButton>
                   </div>
                 </div>
 
@@ -1783,7 +2449,7 @@ export default function ManagerProfilesPage() {
                     <select
                       value={resumeTemplateId}
                       onChange={(event) => setResumeTemplateId(event.target.value)}
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700"
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm"
                     >
                       {resumeTemplates.map((template) => (
                         <option key={template.id} value={template.id}>
@@ -1861,16 +2527,39 @@ export default function ManagerProfilesPage() {
     return { message };
   }
 
-  async function handleAssign() {
-    if (!selectedProfile || !assignBidderId || !token || !user) return;
-    if (activeAssignment && activeAssignment.bidderUserId === assignBidderId) {
+  async function handleAssign(confirmedBidderId?: string) {
+    const bidderIdToAssign = confirmedBidderId !== undefined ? confirmedBidderId : (assignBidderIdPending !== undefined ? assignBidderIdPending : assignBidderId);
+    if (!selectedProfile || !token || !user) return;
+    
+    // If unassigning (empty string)
+    if (bidderIdToAssign === "" && activeAssignment) {
+      setAssignLoading(true);
+      setError("");
+      try {
+        await api(`/assignments/${activeAssignment.id}/unassign`, { method: "POST", body: "{}" }, token);
+        await loadAssignments(token);
+        setAssignBidderId("");
+        setAssignBidderIdPending("");
+        setConfirmAssignOpen(false);
+      } catch (err) {
+        console.error(err);
+        setError("Failed to unassign profile.");
+      } finally {
+        setAssignLoading(false);
+      }
+      return;
+    }
+    
+    // If assigning
+    if (!bidderIdToAssign) return;
+    if (activeAssignment && activeAssignment.bidderUserId === bidderIdToAssign) {
       setError("This profile is already assigned to the selected bidder.");
       return;
     }
     setAssignLoading(true);
     setError("");
     try {
-      if (activeAssignment && activeAssignment.bidderUserId !== assignBidderId) {
+      if (activeAssignment && activeAssignment.bidderUserId !== bidderIdToAssign) {
         await api(`/assignments/${activeAssignment.id}/unassign`, { method: "POST", body: "{}" }, token);
       }
       await api(
@@ -1879,13 +2568,16 @@ export default function ManagerProfilesPage() {
           method: "POST",
           body: JSON.stringify({
             profileId: selectedProfile.id,
-            bidderUserId: assignBidderId,
+            bidderUserId: bidderIdToAssign,
             assignedBy: user.id,
           }),
         },
         token,
       );
       await loadAssignments(token);
+      setAssignBidderId(bidderIdToAssign);
+      setAssignBidderIdPending("");
+      setConfirmAssignOpen(false);
     } catch (err) {
       console.error(err);
       const parsed = parseAssignError(err);
@@ -1993,6 +2685,25 @@ export default function ManagerProfilesPage() {
     }
   }
 
+  async function handleDeleteProfile() {
+    if (!token || !selectedProfile) return;
+    setDeleteLoading(true);
+    setError("");
+    try {
+      await api(`/profiles/${selectedProfile.id}`, { method: "DELETE" }, token);
+      await loadProfiles(token);
+      setSelectedId("");
+      setDetailOpen(false);
+      setConfirmDeleteOpen(false);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to delete profile.");
+      setConfirmDeleteOpen(false);
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
 function updateBase(path: string, value: string | boolean) {
   setDraftBase((prev) => {
     const next = cleanBaseInfo(prev);
@@ -2085,13 +2796,28 @@ function SectionHeader({
   onCancel: () => void;
 }) {
   return (
-    <div className="md:col-span-2 flex items-center justify-between pt-1">
+    <div className="flex items-center justify-between">
       <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{title}</div>
       <div className="flex items-center gap-2 text-xs">
-        <IconButton onClick={onToggleShow} title={state.show ? "Hide section" : "Show section"}>
-          <TriangleIcon direction={state.show ? "down" : "left"} />
+        <button
+          onClick={onToggleShow}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          title={state.show ? "Hide section" : "Show section"}
+        >
+          <svg
+            className={`h-4 w-4 transition-transform ${
+              state.show ? "rotate-90" : ""
+            }`}
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
           <span className={srOnly}>{state.show ? "Hide" : "Show"}</span>
-        </IconButton>
+        </button>
         {state.edit ? (
           <>
             <IconButton onClick={onSave} title="Save section">
@@ -2118,17 +2844,20 @@ function IconButton({
   onClick,
   title,
   children,
+  disabled,
 }: {
   onClick: MouseEventHandler<HTMLButtonElement>;
   title: string;
   children: ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       title={title}
       type="button"
-      className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800 shadow-sm transition hover:bg-slate-100"
+      disabled={disabled}
+      className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </button>
@@ -2215,6 +2944,33 @@ function buildBaseInfoPayload(base: BaseInfo): BaseInfo {
     ...cleaned,
     contact: { ...cleaned.contact, phone: formatPhone(cleaned.contact) },
   };
+}
+
+function buildCompanyTitleKey(item: WorkExperience): string {
+  // Use the same logic as workspace to ensure keys match
+  const source = item as Record<string, unknown>;
+  const explicit = cleanString(
+    (source.company_title ??
+      source.companyTitle ??
+      source.companyTitleText ??
+      source.company_title_text ??
+      source.display_title ??
+      source.displayTitle ??
+      source.heading) as string | number | null | undefined
+  );
+  if (explicit) return explicit;
+  const title = cleanString(
+    (source.title ?? source.roleTitle ?? source.role) as string | number | null | undefined
+  );
+  const company = cleanString(
+    (source.company ?? source.companyTitle ?? source.company_name) as
+      | string
+      | number
+      | null
+      | undefined
+  );
+  if (title && company) return `${title} - ${company}`;
+  return title || company || "";
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -2340,6 +3096,17 @@ function serializeBaseResume(value?: BaseResume): string {
 function syncOpenList(list: boolean[], length: number): boolean[] {
   if (length <= 0) return [];
   return Array.from({ length }, (_, index) => list[index] ?? true);
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function cleanString(val?: string | number | null) {

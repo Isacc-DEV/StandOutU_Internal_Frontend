@@ -2,15 +2,15 @@
 
 export default function JobLinksEmptyState() {
   return (
-    <section className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-8 text-center shadow-[0_18px_60px_-50px_rgba(15,23,42,0.25)]">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+    <section className="rounded-2xl border border-dashed border-slate-300 bg-gradient-to-br from-white to-slate-50/50 px-8 py-12 text-center shadow-sm">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 text-slate-500 shadow-sm">
         <svg
           aria-hidden="true"
           viewBox="0 0 24 24"
-          className="h-6 w-6"
+          className="h-8 w-8"
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.8"
+          strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         >
@@ -22,10 +22,10 @@ export default function JobLinksEmptyState() {
           <path d="M3 18h.01" />
         </svg>
       </div>
-      <h3 className="mt-4 text-lg font-semibold text-slate-900">
-        No job links yet
+      <h3 className="mt-6 text-xl font-bold text-slate-900">
+        No job links found
       </h3>
-      <p className="mt-2 text-sm text-slate-600">
+      <p className="mt-3 text-sm font-medium text-slate-600">
         Try adjusting the search, country, or date filters to see more results.
       </p>
     </section>

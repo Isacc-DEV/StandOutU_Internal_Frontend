@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { clearAuth } from '../lib/auth';
 import { api, API_BASE } from '../lib/api';
-import { getReportsLastSeen, subscribeNotificationRefresh, triggerNotificationRefresh } from '../lib/notifications';
+import { getReportsLastSeen, subscribeNotificationRefresh, triggerNotificationRefresh, useNotificationWebSocket } from '../lib/notifications';
 import { useAuth } from '../lib/useAuth';
 
 function getInitials(name?: string | null) {
@@ -31,6 +31,7 @@ const DOT_BORDER_COLOR = '#ffffff';
 type DesktopBridge = {
   isElectron?: boolean;
   setAppBadge?: (count: number, badgeDataUrl?: string | null) => Promise<void> | void;
+  showNotification?: (title: string, body: string, options?: { sound?: boolean; iconEffect?: boolean }) => Promise<{ ok: boolean } | void>;
 };
 
 function formatBadgeText(count: number) {
@@ -339,7 +340,7 @@ export default function TopNav() {
   const [navNotifications, setNavNotifications] = useState({ ...emptyNotifications });
   const avatarUrl = user?.avatarUrl?.trim();
   const hasAvatar = Boolean(avatarUrl) && avatarUrl?.toLowerCase() !== 'nope';
-  const initials = getInitials(user?.name);
+  const initials = getInitials(user?.userName);
   const totalNotifications = Object.values(navNotifications).reduce((sum, value) => sum + value, 0);
   const hasNotifications = totalNotifications > 0;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -384,9 +385,37 @@ export default function TopNav() {
     }
   };
 
+  const prevNotificationCountRef = useRef<number>(0);
+  const isInitialLoadRef = useRef<boolean>(true);
+
+  // WebSocket for real-time notifications
+  useNotificationWebSocket({
+    token,
+    apiBase: API_BASE,
+    onNotification: (notification) => {
+      // Show Electron notification when new notification arrives
+      const bridge = getDesktopBridge();
+      if (bridge?.isElectron && bridge.showNotification) {
+        const title = notification.kind === 'system' ? 'System Notification' : 
+                     notification.kind === 'report' ? 'Report Update' : 
+                     notification.kind === 'community' ? 'New Message' : 'Notification';
+        bridge.showNotification(title, notification.message, {
+          sound: true,
+          iconEffect: true,
+        }).catch((err) => {
+          console.error('Failed to show Electron notification:', err);
+        });
+      }
+      // Trigger refresh to update counts
+      triggerNotificationRefresh();
+    },
+  });
+
   useEffect(() => {
     if (!token || !user) {
       setNavNotifications({ ...emptyNotifications });
+      prevNotificationCountRef.current = 0;
+      isInitialLoadRef.current = true;
       return;
     }
     let active = true;
@@ -424,12 +453,34 @@ export default function TopNav() {
             typeof reportData.systemCount === 'number' ? reportData.systemCount : 0;
         }
         if (!active) return;
+        
+        const newTotal = (communityTotal ?? 0) + (reportCount ?? 0) + (systemCount ?? 0);
+        const prevTotal = prevNotificationCountRef.current;
+        
         setNavNotifications((prev) => ({
           ...prev,
           ...(communityTotal !== null ? { community: communityTotal } : {}),
           ...(reportCount !== null ? { reports: reportCount } : {}),
           ...(systemCount !== null ? { system: systemCount } : {}),
         }));
+        
+        // Show notification if count increased (not on initial load)
+        if (!isInitialLoadRef.current && newTotal > prevTotal) {
+          const bridge = getDesktopBridge();
+          if (bridge?.isElectron && bridge.showNotification) {
+            const title = 'New Notifications';
+            const message = `You have ${newTotal - prevTotal} new notification${newTotal - prevTotal > 1 ? 's' : ''}`;
+            bridge.showNotification(title, message, {
+              sound: true,
+              iconEffect: true,
+            }).catch((err) => {
+              console.error('Failed to show Electron notification:', err);
+            });
+          }
+        }
+        
+        prevNotificationCountRef.current = newTotal;
+        isInitialLoadRef.current = false;
       } finally {
         loading = false;
       }
@@ -459,7 +510,7 @@ export default function TopNav() {
   }, [token, user]);
 
   return (
-    <header className="relative z-[1000] w-full border-b border-white/5 bg-[#020618] backdrop-blur">
+    <header className="fixed top-0 left-0 right-0 z-[1000] w-full border-b border-white/5 bg-[#020618] backdrop-blur">
       <div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-4 py-3 text-sm">
         <div className="flex items-center">
           <Link href="/" className="flex items-center">
@@ -472,6 +523,28 @@ export default function TopNav() {
         </div>
         <nav className="flex items-center gap-2">
           <NavItem href="/" label="Home" active={pathname === '/'} notificationCount={navNotifications.home} />
+          {pathname === '/' ? (
+            <a
+              href="#about"
+              onClick={(e) => {
+                e.preventDefault();
+                const aboutSection = document.getElementById('about');
+                if (aboutSection) {
+                  aboutSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+              className="relative rounded-full px-3 py-2 text-sm transition text-slate-200 hover:text-white"
+            >
+              About
+            </a>
+          ) : (
+            <Link
+              href="/#about"
+              className="relative rounded-full px-3 py-2 text-sm transition text-slate-200 hover:text-white"
+            >
+              About
+            </Link>
+          )}
           <NavItem
             href="/workspace"
             label="Workspace"
@@ -611,7 +684,7 @@ export default function TopNav() {
                 <span className="relative flex h-7 w-7 items-center justify-center">
                   <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-white/15 text-[9px] font-semibold text-white">
                     {hasAvatar ? (
-                      <img src={avatarUrl} alt={`${user.name} avatar`} className="h-full w-full object-cover" />
+                      <img src={avatarUrl} alt={`${user.userName} avatar`} className="h-full w-full object-cover" />
                     ) : (
                       initials
                     )}
@@ -642,7 +715,7 @@ export default function TopNav() {
           ) : (
             <Link
               href="/auth"
-              className="rounded-full bg-[#4ade80] px-4 py-2 text-xs font-semibold text-[#0b1224] shadow-[0_10px_30px_-18px_rgba(74,222,128,0.8)] hover:brightness-110"
+              className="rounded-full bg-[#6366f1] px-4 py-2 text-xs font-semibold text-[#0b1224] shadow-[0_10px_30px_-18px_rgba(99,102,241,0.8)] hover:brightness-110"
             >
               Sign in
             </Link>

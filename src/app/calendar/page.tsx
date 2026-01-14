@@ -8,11 +8,11 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import luxon3Plugin from '@fullcalendar/luxon3';
+import { RefreshCw, Calendar, Mail, Plus, X, Settings, Clock, Globe } from 'lucide-react';
 import TopNav from '../../components/TopNav';
 import { useAuth } from '../../lib/useAuth';
 import { DEFAULT_TIMEZONE_ID, TIMEZONE_OPTIONS, type TimezoneOption } from '../../lib/timezones';
-import { getAzureADOAuthUrl } from '../../lib/oauth';
-import { api } from '../../lib/api';
+import { api, API_BASE } from '../../lib/api';
 
 type CalendarAccount = {
   email: string;
@@ -62,9 +62,63 @@ const chipBase =
   'inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700';
 
 const MAILBOX_STORAGE_KEY = 'calendar.extraMailboxes';
+const MAILBOX_COLORS_STORAGE_KEY = 'calendar.mailboxColors';
+const CALENDAR_VIEW_STORAGE_KEY = 'calendar.currentView';
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const normalizeMailbox = (mailbox: string) => mailbox.trim().toLowerCase();
+
+// Color palette for different mailboxes
+const MAILBOX_COLORS = [
+  { bg: '#0284c7', border: '#0ea5e9', text: '#ffffff' }, // Sky blue
+  { bg: '#7c3aed', border: '#8b5cf6', text: '#ffffff' }, // Purple
+  { bg: '#059669', border: '#10b981', text: '#ffffff' }, // Emerald
+  { bg: '#dc2626', border: '#ef4444', text: '#ffffff' }, // Red
+  { bg: '#ea580c', border: '#f97316', text: '#ffffff' }, // Orange
+  { bg: '#0891b2', border: '#06b6d4', text: '#ffffff' }, // Cyan
+  { bg: '#be185d', border: '#ec4899', text: '#ffffff' }, // Pink
+  { bg: '#b45309', border: '#d97706', text: '#ffffff' }, // Amber
+  { bg: '#0369a1', border: '#0ea5e9', text: '#ffffff' }, // Blue
+  { bg: '#7e22ce', border: '#9333ea', text: '#ffffff' }, // Violet
+  { bg: '#047857', border: '#059669', text: '#ffffff' }, // Green
+  { bg: '#991b1b', border: '#dc2626', text: '#ffffff' }, // Dark red
+  { bg: '#0d9488', border: '#14b8a6', text: '#ffffff' }, // Teal
+  { bg: '#c026d3', border: '#d946ef', text: '#ffffff' }, // Fuchsia
+  { bg: '#65a30d', border: '#84cc16', text: '#ffffff' }, // Lime
+  { bg: '#1e40af', border: '#2563eb', text: '#ffffff' }, // Indigo
+  { bg: '#a21caf', border: '#c026d3', text: '#ffffff' }, // Magenta
+  { bg: '#155e75', border: '#0891b2', text: '#ffffff' }, // Dark cyan
+  { bg: '#92400e', border: '#b45309', text: '#ffffff' }, // Brown
+  { bg: '#701a75', border: '#86198f', text: '#ffffff' }, // Dark purple
+  { bg: '#166534', border: '#16a34a', text: '#ffffff' }, // Dark green
+  { bg: '#9f1239', border: '#be185d', text: '#ffffff' }, // Dark pink
+  { bg: '#78350f', border: '#92400e', text: '#ffffff' }, // Dark orange
+  { bg: '#1e3a8a', border: '#1e40af', text: '#ffffff' }, // Navy blue
+];
+
+// Get color for a mailbox using consistent hashing, with support for custom colors
+const getMailboxColor = (
+  mailbox: string,
+  customColors?: Record<string, typeof MAILBOX_COLORS[0]>
+): typeof MAILBOX_COLORS[0] => {
+  if (!mailbox) {
+    return MAILBOX_COLORS[0]; // Default color
+  }
+  const normalized = normalizeMailbox(mailbox);
+  
+  // Check for custom color first
+  if (customColors && customColors[normalized]) {
+    return customColors[normalized];
+  }
+  
+  // Fall back to hash-based assignment
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = normalized.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % MAILBOX_COLORS.length;
+  return MAILBOX_COLORS[index];
+};
 
 const resolveDefaultTimezoneId = () => {
   if (typeof Intl === 'undefined') return DEFAULT_TIMEZONE_ID;
@@ -156,6 +210,18 @@ export default function CalendarPage() {
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [eventPopover, setEventPopover] = useState<EventPopover | null>(null);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  const [customMailboxColors, setCustomMailboxColors] = useState<Record<string, typeof MAILBOX_COLORS[0]>>({});
+  const [colorPickerOpen, setColorPickerOpen] = useState<string | null>(null);
+  const [colorPickerPosition, setColorPickerPosition] = useState<{ x: number; y: number } | null>(null);
+  const [currentView, setCurrentView] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'timeGridWeek';
+    try {
+      const stored = window.localStorage.getItem(CALENDAR_VIEW_STORAGE_KEY);
+      return stored || 'timeGridWeek';
+    } catch {
+      return 'timeGridWeek';
+    }
+  });
 
   useEffect(() => {
     if (loading) return;
@@ -166,16 +232,44 @@ export default function CalendarPage() {
 
   const eventContent = (arg: EventContentArg) => {
     const label = arg.timeText ? `${arg.timeText} ${arg.event.title}` : arg.event.title;
+    // Check if we're in monthly view (dayGridMonth)
+    const isMonthView = arg.view.type === 'dayGridMonth';
+    
+    // In monthly view, use the mailbox color (borderColor) for text to ensure readability
+    // In weekly/day view, use white text on colored background
+    const textColor = isMonthView 
+      ? (arg.event.borderColor || arg.event.backgroundColor || '#0284c7')
+      : (arg.event.textColor || '#ffffff');
+    
     return (
-      <div className="w-full truncate text-[11px] font-semibold leading-tight text-white" title={label}>
+      <div 
+        className="w-full truncate text-[11px] font-semibold leading-tight"
+        style={{ color: textColor }}
+        title={label}
+      >
         {label}
       </div>
     );
   };
 
-  const handleDatesSet = (info: DatesSetArg) => {
+  const handleViewChange = useCallback((view: string) => {
+    setCurrentView(view);
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(CALENDAR_VIEW_STORAGE_KEY, view);
+      } catch (err) {
+        console.warn('Failed to save calendar view', err);
+      }
+    }
+  }, []);
+
+  const handleDatesSet = useCallback((info: DatesSetArg) => {
     setViewRange({ start: info.startStr, end: info.endStr });
-  };
+    // Update current view when dates change (which happens on view change)
+    if (info.view.type !== currentView) {
+      handleViewChange(info.view.type);
+    }
+  }, [currentView, handleViewChange]);
 
   const calendarEvents = useMemo(() => {
     const hiddenSet = new Set(hiddenMailboxes);
@@ -184,11 +278,18 @@ export default function CalendarPage() {
         const mailbox = ev.mailbox ? normalizeMailbox(ev.mailbox) : '';
         return !mailbox || !hiddenSet.has(mailbox);
       })
-      .map((ev) => ({
-        ...ev,
-        allDay: Boolean(ev.isAllDay),
-      }));
-  }, [events, hiddenMailboxes]);
+      .map((ev) => {
+        const mailbox = ev.mailbox ? normalizeMailbox(ev.mailbox) : '';
+        const color = getMailboxColor(mailbox, customMailboxColors);
+        return {
+          ...ev,
+          allDay: Boolean(ev.isAllDay),
+          backgroundColor: color.bg,
+          borderColor: color.border,
+          textColor: color.text,
+        };
+      });
+  }, [events, hiddenMailboxes, customMailboxColors]);
 
   const timezoneOptions = useMemo(() => buildTimezoneOptions(), []);
 
@@ -248,8 +349,8 @@ export default function CalendarPage() {
   const hiddenMailboxSet = useMemo(() => new Set(hiddenMailboxes), [hiddenMailboxes]);
 
   const primaryEmail = connectedAccounts.find((acc) => acc.isPrimary)?.email?.toLowerCase();
-  const canSyncNow = connectedAccounts.length > 0 && Boolean(viewRange);
-  const canShowMailboxes = connectedAccounts.length > 0;
+  const canSyncNow = connectedAccounts.length > 0 && Boolean(viewRange) && canManageOutlook;
+  const canShowMailboxes = connectedAccounts.length > 0 || (events.length > 0 && !canManageOutlook);
 
   useEffect(() => {
     if (!canManageOutlook || typeof window === 'undefined') return;
@@ -267,6 +368,32 @@ export default function CalendarPage() {
       console.warn('Failed to read saved mailboxes', err);
     }
   }, [canManageOutlook]);
+
+  // Load custom mailbox colors from localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = window.localStorage.getItem(MAILBOX_COLORS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (typeof parsed === 'object' && parsed !== null) {
+          setCustomMailboxColors(parsed);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to read saved mailbox colors', err);
+    }
+  }, []);
+
+  // Save custom mailbox colors to localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(MAILBOX_COLORS_STORAGE_KEY, JSON.stringify(customMailboxColors));
+    } catch (err) {
+      console.warn('Failed to save mailbox colors', err);
+    }
+  }, [customMailboxColors]);
 
   useEffect(() => {
     if (!canManageOutlook || typeof window === 'undefined') return;
@@ -329,7 +456,9 @@ export default function CalendarPage() {
     setEventsLoading(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({ start: range.start, end: range.end, source });
+      // Non-admin users can ONLY load from database, never from Graph API
+      const effectiveSource = canManageOutlook ? source : 'db';
+      const qs = new URLSearchParams({ start: range.start, end: range.end, source: effectiveSource });
       if (canManageOutlook) {
         const mailboxParam = uniqueMailboxes(extraMailboxes).filter(
           (mailbox) => mailbox && mailbox !== primaryEmail,
@@ -387,16 +516,37 @@ export default function CalendarPage() {
   );
 
   const handleSyncMailboxes = useCallback(() => {
-    if (!viewRange || connectedAccounts.length === 0) return;
-    void fetchEvents(viewRange, 'graph');
-  }, [fetchEvents, connectedAccounts.length, viewRange]);
+    if (!viewRange) return;
+    if (canManageOutlook && connectedAccounts.length > 0) {
+      // Admin sync: fetch from Graph API (which will save to DB automatically)
+      void fetchEvents(viewRange, 'graph');
+    } else {
+      // For non-admin users, just refresh from database
+      void fetchEvents(viewRange, 'db');
+    }
+  }, [fetchEvents, connectedAccounts.length, viewRange, canManageOutlook]);
 
-  const handleConnectOutlook = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const redirectUri = `${window.location.origin}/api/calendar/oauth/callback`;
-    const authUrl = getAzureADOAuthUrl(redirectUri);
-    window.location.href = authUrl;
-  }, []);
+  const handleConnectOutlook = useCallback(async () => {
+    if (typeof window === 'undefined' || !token) return;
+    
+    try {
+      // Backend callback URL (without query params - Azure AD doesn't accept them)
+      const backendCallbackUrl = `${API_BASE}/calendar/oauth/callback`;
+      
+      // Get OAuth URL from backend
+      const response = await api<{ authUrl: string; state: string }>(
+        `/calendar/oauth/authorize?redirect_uri=${encodeURIComponent(backendCallbackUrl)}&frontend_redirect=${encodeURIComponent(window.location.origin)}`,
+        { method: 'GET' },
+        token
+      );
+      
+      // Redirect to Microsoft OAuth
+      window.location.href = response.authUrl;
+    } catch (err) {
+      console.error('Failed to get OAuth URL:', err);
+      setError(err instanceof Error ? err.message : 'Failed to connect Outlook account.');
+    }
+  }, [token]);
 
   const loadOAuthAccounts = useCallback(async () => {
     if (!token) return;
@@ -508,77 +658,116 @@ export default function CalendarPage() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [closeEventPopover, eventPopover]);
 
-  return (
-    <main className="min-h-screen bg-gradient-to-b from-[#eaf2ff] via-[#f4f7ff] to-white text-slate-900">
-      <TopNav />
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
-        {/* <div className="overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-[0_20px_80px_-50px_rgba(15,23,42,0.6)]">
-          <div className="bg-gradient-to-r from-sky-50 via-white to-indigo-50 px-8 py-8">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-2">
-                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Unified scheduling</p>
-                <h1 className="text-3xl font-semibold text-slate-900">
-                  Outlook calendar, powered by Microsoft Graph.
-                </h1>
-                <p className="max-w-3xl text-sm text-slate-600">
-                  Connect once and see live meeting data across your synced mailboxes. No ICS uploads, just
-                  real events that refresh on focus.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <span className={`${chipBase} bg-sky-50 text-sky-700`}>Microsoft Graph</span>
-                  <span className={`${chipBase} bg-indigo-50 text-indigo-700`}>Calendar.Read</span>
-                  <span className={`${chipBase}`}>Polling refresh</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleConnectOutlook}
-                  className="rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_40px_-20px_rgba(14,165,233,0.8)] transition hover:brightness-110 disabled:opacity-60"
-                >
-                  {connectedAccounts.length > 0 ? 'Add Outlook Account' : 'Connect Outlook'}
-                </button>
-                <button
-                  onClick={() => viewRange && connectedAccounts.length > 0 && fetchEvents(viewRange, 'graph')}
-                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
-                  disabled={connectedAccounts.length === 0 || !viewRange || eventsLoading}
-                >
-                  Refresh
-                </button>
-              </div>
-            </div>
-          </div>
-        </div> */}
+  const handleColorIndicatorClick = useCallback((event: React.MouseEvent, mailbox: string) => {
+    event.stopPropagation();
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const popoverWidth = 256; // w-64 = 16rem = 256px
+    const padding = 16; // Minimum distance from viewport edges
+    
+    // Calculate centered x position
+    let x = rect.left + rect.width / 2;
+    
+    // Ensure popover stays within viewport bounds
+    const minX = padding + popoverWidth / 2;
+    const maxX = window.innerWidth - padding - popoverWidth / 2;
+    x = Math.max(minX, Math.min(maxX, x));
+    
+    setColorPickerPosition({ x, y: rect.bottom + 8 });
+    setColorPickerOpen(mailbox);
+  }, []);
 
-        <div className="flex gap-6 items-stretch">
-          <aside className="space-y-4 basis-[30%] md:sticky md:top-6 h-full">
-            <div className="h-full rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Meeting schedule</p>
-                  <h2 className="text-xl font-semibold text-slate-900">Mailboxes</h2>
+  const handleColorSelect = useCallback((mailbox: string, color: typeof MAILBOX_COLORS[0]) => {
+    const normalized = normalizeMailbox(mailbox);
+    setCustomMailboxColors((prev) => ({
+      ...prev,
+      [normalized]: color,
+    }));
+    setColorPickerOpen(null);
+    setColorPickerPosition(null);
+  }, []);
+
+  const handleColorReset = useCallback((mailbox: string) => {
+    const normalized = normalizeMailbox(mailbox);
+    setCustomMailboxColors((prev) => {
+      const next = { ...prev };
+      delete next[normalized];
+      return next;
+    });
+    setColorPickerOpen(null);
+    setColorPickerPosition(null);
+  }, []);
+
+  useEffect(() => {
+    if (!colorPickerOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.color-picker-popover') && !target.closest('.color-indicator-button')) {
+        setColorPickerOpen(null);
+        setColorPickerPosition(null);
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setColorPickerOpen(null);
+        setColorPickerPosition(null);
+      }
+    };
+    // Use a small delay to avoid closing immediately when opening
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClick, true);
+      window.addEventListener('keydown', handleKey);
+    }, 100);
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('mousedown', handleClick, true);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [colorPickerOpen]);
+
+  return (
+    <main className="min-h-screen bg-gradient-to-b from-[#f4f8ff] via-[#eef2ff] to-white text-slate-900">
+      <TopNav />
+      <div className="mx-auto w-full min-h-screen pt-[57px]">
+        <div className="grid gap-4 min-h-[calc(100vh-57px)] xl:grid-cols-[280px_1fr]">
+          <section
+            className="flex flex-col h-[calc(100vh-57px)] bg-[#0b1224] text-slate-100"
+            style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
+          >
+            <div className="flex flex-col h-full">
+              {/* Header - Fixed at top */}
+              <div className="p-4 border-b border-slate-700/50 flex-shrink-0">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Calendar</p>
+                    <h1 className="text-lg font-semibold text-slate-100">Mailboxes</h1>
+                  </div>
                 </div>
                 {canManageOutlook ? (
                   <button
                     onClick={handleConnectOutlook}
-                    className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800"
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all text-slate-300 hover:bg-slate-800/50 hover:text-white bg-slate-800/30"
                   >
-                    {connectedAccounts.length > 0 ? 'Add Account' : 'Connect'}
+                    <Plus className="w-5 h-5" />
+                    <span>{connectedAccounts.length > 0 ? 'Add Account' : 'Connect Outlook'}</span>
                   </button>
                 ) : null}
               </div>
-              <div className="mt-4 space-y-2">
+
+              {/* Scrollable mailbox list */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
                 {accountsLoading ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  <div className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300">
                     Loading accounts...
                   </div>
-                ) : !canShowMailboxes ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                ) : !canShowMailboxes && events.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-700 bg-slate-800 px-3 py-3 text-sm text-slate-400">
                     {canManageOutlook
                       ? 'Connect your Outlook account to see meetings in real time.'
-                      : 'No cached events yet. Ask an admin to sync Outlook.'}
+                      : 'No events available. Ask an admin to sync Outlook calendars.'}
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <>
                     {visibleMailboxCards.length ? (
                       visibleMailboxCards.map((account) => {
                         const mailboxKey = normalizeMailbox(account.email);
@@ -586,7 +775,8 @@ export default function CalendarPage() {
                         if (account.status === 'connected') {
                           const isPrimary = account.isPrimary ?? (primaryEmail && mailboxKey === primaryEmail);
                           const statusLabel = isPrimary ? 'Primary' : 'Connected';
-                          const statusText = isHidden ? `${statusLabel} (hidden)` : statusLabel;
+                          const statusText = isHidden ? 'Hidden' : 'Shown';
+                          const mailboxColor = getMailboxColor(account.email, customMailboxColors);
                           return (
                             <div
                               key={account.email}
@@ -601,12 +791,23 @@ export default function CalendarPage() {
                               }}
                               aria-pressed={!isHidden}
                               title={isHidden ? 'Show events' : 'Hide events'}
-                              className={`flex w-full flex-col items-start gap-1 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3 text-left shadow-inner transition hover:shadow-md ${isHidden ? 'opacity-50' : ''}`}
+                              className={`flex w-full flex-col items-start gap-1 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2.5 text-left transition ${isHidden ? 'opacity-50' : 'hover:bg-slate-800'}`}
+                              style={{ borderLeftWidth: '4px', borderLeftColor: mailboxColor.bg }}
                             >
                               <div className="flex w-full items-start justify-between gap-2">
-                                <span className="text-[11px] uppercase tracking-[0.18em] text-sky-700">
-                                  {statusText}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleColorIndicatorClick(e, account.email)}
+                                    className="color-indicator-button w-3 h-3 rounded-full flex-shrink-0 hover:ring-2 hover:ring-slate-400 hover:ring-offset-2 hover:ring-offset-slate-800 transition cursor-pointer"
+                                    style={{ backgroundColor: mailboxColor.bg }}
+                                    title="Click to change color"
+                                  />
+                                  <Mail className="w-4 h-4 text-slate-400" />
+                                  <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                                    {statusText}
+                                  </span>
+                                </div>
                                 {canManageOutlook && account.accountId ? (
                                   <button
                                     type="button"
@@ -619,39 +820,48 @@ export default function CalendarPage() {
                                       });
                                     }}
                                     disabled={disconnectingId === account.accountId}
-                                    className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="rounded-lg border border-slate-600 bg-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-300 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
-                                    {disconnectingId === account.accountId ? 'Disconnecting...' : 'Disconnect'}
+                                    {disconnectingId === account.accountId ? '...' : <X className="w-3 h-3" />}
                                   </button>
                                 ) : null}
                               </div>
-                              <span className="text-sm font-semibold text-slate-900">
+                              <span className="text-sm font-semibold text-slate-100">
                                 {account.name || account.email}
                               </span>
-                              <span className="text-xs text-slate-600">{account.email}</span>
-                              <span className="text-[11px] text-slate-500">
-                                Timezone {selectedTimezone.displayLabel}
-                              </span>
+                              <span className="text-xs text-slate-400">{account.email}</span>
                             </div>
                           );
                         }
                         if (account.status === 'needs-access') {
+                          const mailboxColor = getMailboxColor(account.email, customMailboxColors);
                           return (
                             <div
                               key={account.email}
-                              className="flex w-full flex-col items-start gap-1 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-left shadow-inner"
+                              className="flex w-full flex-col items-start gap-1 rounded-xl border border-amber-700 bg-amber-900/20 px-3 py-2.5 text-left"
+                              style={{ borderLeftWidth: '4px', borderLeftColor: mailboxColor.bg }}
                             >
-                              <span className="text-[11px] uppercase tracking-[0.18em] text-amber-700">
-                                Needs access
-                              </span>
-                              <span className="text-sm font-semibold text-slate-900">{account.email}</span>
-                              <span className="text-xs text-amber-700">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleColorIndicatorClick(e, account.email)}
+                                  className="color-indicator-button w-3 h-3 rounded-full flex-shrink-0 hover:ring-2 hover:ring-amber-400 hover:ring-offset-2 hover:ring-offset-amber-900/20 transition cursor-pointer"
+                                  style={{ backgroundColor: mailboxColor.bg }}
+                                  title="Click to change color"
+                                />
+                                <span className="text-[11px] uppercase tracking-[0.18em] text-amber-400">
+                                  Needs access
+                                </span>
+                              </div>
+                              <span className="text-sm font-semibold text-slate-100">{account.email}</span>
+                              <span className="text-xs text-amber-300">
                                 Shared calendar access required. Ask the mailbox owner to share with a connected account.
                               </span>
                             </div>
                           );
                         }
                         const addedLabel = isHidden ? 'Added (hidden)' : 'Added';
+                        const mailboxColor = getMailboxColor(account.email, customMailboxColors);
                         return (
                           <button
                             key={account.email}
@@ -659,125 +869,71 @@ export default function CalendarPage() {
                             onClick={() => toggleMailboxVisibility(mailboxKey)}
                             aria-pressed={!isHidden}
                             title={isHidden ? 'Show events' : 'Hide events'}
-                            className={`flex w-full flex-col items-start gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-inner transition hover:shadow-md ${isHidden ? 'opacity-50' : ''}`}
+                            className={`flex w-full flex-col items-start gap-1 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2.5 text-left transition hover:bg-slate-800 ${isHidden ? 'opacity-50' : ''}`}
+                            style={{ borderLeftWidth: '4px', borderLeftColor: mailboxColor.bg }}
                           >
-                            <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                              {addedLabel}
-                            </span>
-                            <span className="text-sm font-semibold text-slate-900">{account.email}</span>
-                            <span className="text-xs text-slate-500">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleColorIndicatorClick(e, account.email);
+                                }}
+                                className="color-indicator-button w-3 h-3 rounded-full flex-shrink-0 hover:ring-2 hover:ring-slate-400 hover:ring-offset-2 hover:ring-offset-slate-800 transition cursor-pointer"
+                                style={{ backgroundColor: mailboxColor.bg }}
+                                title="Click to change color"
+                              />
+                              <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                                {addedLabel}
+                              </span>
+                            </div>
+                            <span className="text-sm font-semibold text-slate-100">{account.email}</span>
+                            <span className="text-xs text-slate-400">
                               Will sync on the next refresh if shared with a connected account.
                             </span>
                           </button>
                         );
                       })
                     ) : (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                      <div className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-400">
                         {canManageOutlook ? 'No mailboxes added yet.' : 'No mailboxes synced yet.'}
                       </div>
                     )}
-                    {canManageOutlook ? (
-                      <>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Time zone</div>
-                          <div className="mt-2">
-                            <select
-                              value={timezoneId}
-                              onChange={(e) => setTimezoneId(e.target.value)}
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                            >
-                              {timezoneOptions.map((tz) => (
-                                <option key={tz.id} value={tz.id}>
-                                  {tz.displayLabel}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="mt-2 text-xs text-slate-500">
-                            Calendar times show in {selectedTimezone.displayLabel}.
-                          </div>
-                        </div>
-                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-3">
-                          <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                            Add mailbox
-                          </div>
-                          <div className="mt-2 flex gap-2">
-                            <input
-                              value={mailboxInput}
-                              onChange={(e) => {
-                                setMailboxInput(e.target.value);
-                                if (mailboxError) setMailboxError(null);
-                              }}
-                              placeholder="name@company.com"
-                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none ring-1 ring-transparent focus:ring-slate-300"
-                            />
-                            <button
-                              type="button"
-                              onClick={handleAddMailbox}
-                              className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
-                            >
-                              Add
-                            </button>
-                          </div>
-                          <p className="mt-2 text-xs text-slate-500">
-                            Extra mailboxes must be shared with a connected Outlook account. You can paste multiple emails
-                            separated by commas.
-                          </p>
-                          <p className="mt-2 text-xs text-slate-500">
-                            To show multiple mailboxes at once, connect each Outlook account you want to include.
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={handleSyncMailboxes}
-                              disabled={!canSyncNow || eventsLoading}
-                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              Sync mailboxes
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleConnectOutlook}
-                              disabled={accountsLoading}
-                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                              title="Link another Outlook account."
-                            >
-                              Add Outlook account
-                            </button>
-                          </div>
-                          {mailboxError ? (
-                            <div className="mt-2 text-xs text-red-600">{mailboxError}</div>
-                          ) : null}
-                          {extraMailboxes.length ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {extraMailboxes.map((mailbox) => (
-                                <span
-                                  key={mailbox}
-                                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
-                                >
-                                  {mailbox}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveMailbox(mailbox)}
-                                    className="text-slate-500 hover:text-slate-800"
-                                  >
-                                    &times;
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
+                  </>
                 )}
               </div>
-            </div>
-          </aside>
 
-          <section className="space-y-4 basis-[70%]">
-            <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)]">
+              {/* Timezone section - Fixed at bottom */}
+              {canManageOutlook ? (
+                <div className="p-4 border-t border-slate-700/50 flex-shrink-0">
+                  <div className="rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-3">
+                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Time zone</span>
+                    </div>
+                    <div className="mt-2">
+                      <select
+                        value={timezoneId}
+                        onChange={(e) => setTimezoneId(e.target.value)}
+                        className="w-full rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-transparent focus:ring-slate-500"
+                      >
+                        {timezoneOptions.map((tz) => (
+                          <option key={tz.id} value={tz.id}>
+                            {tz.displayLabel}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-400">
+                      Calendar times show in {selectedTimezone.displayLabel}.
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </section>
+          <section className="flex-1 px-4 py-6">
+            <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Upcoming events</p>
@@ -789,10 +945,11 @@ export default function CalendarPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleSyncMailboxes}
-                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
-                    disabled={!canSyncNow || eventsLoading}
+                    disabled={!viewRange || eventsLoading}
+                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60 transition"
                   >
-                    Refresh
+                    <RefreshCw className={`w-4 h-4 ${eventsLoading ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
                   </button>
                 </div>
               </div>
@@ -818,23 +975,27 @@ export default function CalendarPage() {
                 </div>
               ) : null}
 
-              <div className="relative mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="relative mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 {eventsLoading ? (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm">
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/80 backdrop-blur-sm">
                     <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300 border-t-sky-500" />
                   </div>
                 ) : null}
-                {!canShowMailboxes && !eventsLoading ? (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 px-6 text-center text-sm text-slate-600 backdrop-blur-sm">
+                {!canShowMailboxes && !eventsLoading && events.length === 0 ? (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/80 px-6 text-center text-sm text-slate-600 backdrop-blur-sm">
                     {canManageOutlook
                       ? 'Connect your Outlook account to view events.'
-                      : 'No cached events yet. Ask an admin to sync Outlook.'}
+                      : 'No events available. Ask an admin to sync Outlook calendars.'}
                   </div>
                 ) : null}
                 <FullCalendar
                   plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, luxon3Plugin]}
-                  initialView="timeGridWeek"
-                  headerToolbar={false}
+                  initialView={currentView}
+                  headerToolbar={{
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                  }}
                   height={680}
                   expandRows={false}
                   slotMinTime="00:00:00"
@@ -847,11 +1008,11 @@ export default function CalendarPage() {
                   events={calendarEvents}
                   eventContent={eventContent}
                   eventClick={handleEventClick}
-                  eventBackgroundColor="#0284c7"
-                  eventBorderColor="#0ea5e9"
-                  eventTextColor="#fff"
                   dayHeaderFormat={{ weekday: 'short', month: 'short', day: 'numeric' }}
                   datesSet={handleDatesSet}
+                  viewDidMount={(viewInfo) => {
+                    handleViewChange(viewInfo.view.type);
+                  }}
                 />
               </div>
             </div>
@@ -874,9 +1035,10 @@ export default function CalendarPage() {
               <button
                 type="button"
                 onClick={closeEventPopover}
-                className="rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                className="flex items-center gap-1.5 rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 transition"
               >
-                Close
+                <X className="w-3.5 h-3.5" />
+                <span>Close</span>
               </button>
             </div>
             <div className="mt-3 space-y-2 text-sm text-slate-700">
@@ -905,6 +1067,64 @@ export default function CalendarPage() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {/* Color Picker Popover */}
+      {colorPickerOpen && colorPickerPosition ? (
+        <>
+          <div 
+            className="fixed inset-0 z-[49]" 
+            onClick={() => {
+              setColorPickerOpen(null);
+              setColorPickerPosition(null);
+            }}
+          />
+          <div
+            className="color-picker-popover fixed z-50 w-64 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"
+            style={{
+              left: `${colorPickerPosition.x}px`,
+              top: `${colorPickerPosition.y}px`,
+              transform: 'translateX(-50%)',
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3">
+              <div className="text-sm font-semibold text-slate-900">Select Color</div>
+              <div className="text-xs text-slate-500 mt-1">
+                {colorPickerOpen}
+              </div>
+            </div>
+            <div className="grid grid-cols-6 gap-2 mb-3 max-h-64 overflow-y-auto">
+              {MAILBOX_COLORS.map((color, index) => {
+                const isSelected =
+                  getMailboxColor(colorPickerOpen, customMailboxColors).bg === color.bg;
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => handleColorSelect(colorPickerOpen, color)}
+                    className={`w-10 h-10 rounded-lg border-2 transition hover:scale-110 ${
+                      isSelected
+                        ? 'border-slate-900 ring-2 ring-slate-300'
+                        : 'border-slate-200 hover:border-slate-400'
+                    }`}
+                    style={{ backgroundColor: color.bg }}
+                    title={`${color.bg}`}
+                  />
+                );
+              })}
+            </div>
+            {customMailboxColors[normalizeMailbox(colorPickerOpen)] ? (
+              <button
+                type="button"
+                onClick={() => handleColorReset(colorPickerOpen)}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 transition"
+              >
+                Reset to Default
+              </button>
+            ) : null}
+          </div>
+        </>
       ) : null}
     </main>
   );

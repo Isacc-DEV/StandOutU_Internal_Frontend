@@ -1,15 +1,17 @@
 type SectionHeaderProps = {
   title: string;
   count?: number;
+  variant?: 'light' | 'dark';
 };
 
-export function SectionHeader({ title, count }: SectionHeaderProps) {
+export function SectionHeader({ title, count, variant = 'light' }: SectionHeaderProps) {
+  const isDark = variant === 'dark';
   return (
     <div className="flex items-center gap-3">
-      <div className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{title}</div>
-      <span className="h-px flex-1 bg-[var(--community-line)]" />
+      <div className={`text-[11px] uppercase tracking-[0.22em] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{title}</div>
+      <span className={`h-px flex-1 ${isDark ? 'bg-slate-700' : 'bg-[var(--community-line)]'}`} />
       {typeof count === 'number' ? (
-        <span className="rounded-full bg-[var(--community-soft)] px-2 py-0.5 text-[10px] text-slate-600">
+        <span className={`rounded-full px-2 py-0.5 text-[10px] ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-[var(--community-soft)] text-slate-600'}`}>
           {count}
         </span>
       ) : null}

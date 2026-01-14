@@ -1,13 +1,16 @@
 'use client';
 
-export type ClientRole = 'ADMIN' | 'MANAGER' | 'BIDDER' | 'OBSERVER';
+export type ClientRole = 'ADMIN' | 'MANAGER' | 'BIDDER' | 'OBSERVER' | 'NONE';
 
 export type ClientUser = {
   id: string;
   email: string;
+  userName: string;
   name: string;
   role: ClientRole;
   avatarUrl?: string | null;
+  bio?: string | null;
+  isActive?: boolean;
 };
 
 type StoredAuth = {

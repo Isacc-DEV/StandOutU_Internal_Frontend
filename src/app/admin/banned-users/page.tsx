@@ -7,12 +7,12 @@ import { ClientUser } from "../../../lib/auth";
 import { useAuth } from "../../../lib/useAuth";
 import AdminShell from "../../../components/AdminShell";
 
-export default function JoinRequestsPage() {
+export default function BannedUsersPage() {
   const router = useRouter();
   const { user, token, loading } = useAuth();
   const [bannedUsers, setBannedUsers] = useState<ClientUser[]>([]);
   const [error, setError] = useState("");
-  const [pendingAction, setPendingAction] = useState<{ type: 'approve' | 'delete', userId: string, userName: string } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: 'delete' | 'approve', userId: string, userName: string } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -31,21 +31,22 @@ export default function JoinRequestsPage() {
 
   async function loadBannedUsers(authToken: string) {
     try {
-      const list = await api<ClientUser[]>("/users?isActive=false", undefined, authToken);
-      setBannedUsers(list);
+      const allUsers = await api<ClientUser[]>("/users?includeObservers=true", undefined, authToken);
+      const banned = allUsers.filter(u => u.role !== "NONE" && u.isActive === false);
+      setBannedUsers(banned);
     } catch (err) {
       console.error(err);
-      setError("Failed to load join requests.");
+      setError("Failed to load banned users.");
     }
-  }
-
-  function handleApprove(user: ClientUser) {
-    setPendingAction({ type: 'approve', userId: user.id, userName: user.userName });
-    setConfirmOpen(true);
   }
 
   function handleDelete(user: ClientUser) {
     setPendingAction({ type: 'delete', userId: user.id, userName: user.userName });
+    setConfirmOpen(true);
+  }
+
+  function handleApprove(user: ClientUser) {
+    setPendingAction({ type: 'approve', userId: user.id, userName: user.userName });
     setConfirmOpen(true);
   }
 
@@ -55,10 +56,10 @@ export default function JoinRequestsPage() {
     setError("");
 
     try {
-      if (pendingAction.type === 'approve') {
-        await api(`/users/${pendingAction.userId}/role`, { method: "PATCH", body: JSON.stringify({ role: "OBSERVER" }) }, token);
-      } else if (pendingAction.type === 'delete') {
+      if (pendingAction.type === 'delete') {
         await api(`/users/${pendingAction.userId}`, { method: "DELETE" }, token);
+      } else if (pendingAction.type === 'approve') {
+        await api(`/users/${pendingAction.userId}/approve`, { method: "PATCH", body: JSON.stringify({}) }, token);
       }
       await loadBannedUsers(token);
       setConfirmOpen(false);
@@ -77,8 +78,8 @@ export default function JoinRequestsPage() {
       <div className="space-y-6">
         <div className="space-y-2">
           <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Admin</p>
-          <h1 className="text-3xl font-semibold text-slate-900">Join requests</h1>
-          <p className="text-sm text-slate-600">Approve banned users to grant observer access or delete accounts.</p>
+          <h1 className="text-3xl font-semibold text-slate-900">Banned users</h1>
+          <p className="text-sm text-slate-600">Manage banned user accounts. Approve to restore access or delete permanently.</p>
         </div>
 
         {error && (
@@ -96,7 +97,7 @@ export default function JoinRequestsPage() {
           </div>
           <div className="divide-y divide-slate-200">
             {bannedUsers.length === 0 ? (
-              <div className="px-4 py-6 text-sm text-slate-600">No pending requests.</div>
+              <div className="px-4 py-6 text-sm text-slate-600">No banned users.</div>
             ) : (
               bannedUsers.map((u) => (
                 <div key={u.id} className="grid grid-cols-4 items-center px-4 py-3 text-sm text-slate-800">
@@ -105,16 +106,14 @@ export default function JoinRequestsPage() {
                   <div className="text-slate-700">{u.role}</div>
                   <div className="flex items-center gap-2">
                     <button
-                      type="button"
                       onClick={() => handleApprove(u)}
                       disabled={actionLoading}
                       className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60"
-                      title="Approve (set role to OBSERVER)"
+                      title="Approve (restore access)"
                     >
                       <Check className="h-4 w-4" />
                     </button>
                     <button
-                      type="button"
                       onClick={() => handleDelete(u)}
                       disabled={actionLoading}
                       className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-700 transition hover:bg-red-100 disabled:opacity-60"
@@ -137,12 +136,12 @@ export default function JoinRequestsPage() {
             >
               <div className="mb-4">
                 <p className="text-[11px] uppercase tracking-[0.28em] text-amber-700">
-                  {pendingAction.type === 'approve' && 'Confirm approval'}
                   {pendingAction.type === 'delete' && 'Confirm deletion'}
+                  {pendingAction.type === 'approve' && 'Confirm approval'}
                 </p>
                 <h3 className="text-xl font-semibold text-amber-900 mt-1">
-                  {pendingAction.type === 'approve' && `Approve user "${pendingAction.userName}"? Their role will be set to OBSERVER.`}
                   {pendingAction.type === 'delete' && `Delete account "${pendingAction.userName}"? This action cannot be undone.`}
+                  {pendingAction.type === 'approve' && `Approve user "${pendingAction.userName}"? They will be able to log in again.`}
                 </h3>
               </div>
               <div className="flex items-center justify-end gap-2">

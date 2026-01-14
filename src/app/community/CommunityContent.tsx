@@ -30,6 +30,7 @@ export function CommunityContent() {
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [showPinned, setShowPinned] = useState(false);
+  const [showRoomInfo, setShowRoomInfo] = useState(false);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const communityData = useCommunityData({ token, userId: user?.id });
@@ -289,11 +290,13 @@ export function CommunityContent() {
     if (!activeThreadId || !token) {
       setMessages([]);
       setPinnedMessages([]);
+      setShowRoomInfo(false);
       return;
     }
     void loadMessages(activeThreadId, token);
     void loadPinnedMessages(activeThreadId, token);
     void markAsRead(activeThreadId, token);
+    setShowRoomInfo(false);
   }, [activeThreadId, token]);
 
   useEffect(() => {
@@ -369,10 +372,10 @@ export function CommunityContent() {
     }
   }
 
-  const inputDisabled = !activeThreadId || sending || uploading;
+  const inputDisabled = !activeThreadId || sending || uploading || user?.role === 'OBSERVER';
 
   const layoutStyle = {
-    '--community-accent': '#4ade80',
+    '--community-accent': '#6366f1',
     '--community-ink': '#0b1224',
     '--community-soft': '#f1f5f9',
     '--community-line': '#e2e8f0',
@@ -385,44 +388,58 @@ export function CommunityContent() {
       <style>{`
         @keyframes highlight {
           0%, 100% { background-color: transparent; }
-          50% { background-color: rgba(74, 222, 128, 0.15); }
+          50% { background-color: rgba(99, 102, 241, 0.15); }
         }
         .highlight-message {
           animation: highlight 2s ease;
         }
       `}</style>
       <TopNav />
-      <div className="mx-auto w-full max-w-screen-2xl px-4 py-6">
+      <div className="mx-auto w-full min-h-screen pt-[57px]">
         {error && (
-          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mx-4 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
-        <div className="flex gap-4 overflow-x-auto pb-2">
-          <Sidebar
-            channels={channelList}
-            dms={dms}
-            memberList={memberList}
-            activeThreadId={activeThreadId}
-            unreadMap={unreadMap}
-            overviewLoading={overviewLoading}
-            creatingDmId={creatingDmId}
-            dmLookup={dmLookup}
-            onThreadSelect={setActiveThreadId}
-            onStartDm={handleStartDm}
-          />
+        <div className="grid gap-4 min-h-screen xl:grid-cols-[280px_1fr]">
+          <section className="flex flex-col gap-2 bg-[#0b1224] text-slate-100" style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}>
+            <div className="p-4">
+              <Sidebar
+                channels={channelList}
+                dms={dms}
+                memberList={memberList}
+                activeThreadId={activeThreadId}
+                unreadMap={unreadMap}
+                overviewLoading={overviewLoading}
+                creatingDmId={creatingDmId}
+                dmLookup={dmLookup}
+                onThreadSelect={setActiveThreadId}
+                onStartDm={handleStartDm}
+              />
+            </div>
+          </section>
 
-          <section
-            className="relative flex min-h-[70vh] max-h-[80vh] w-full max-w-4xl min-w-[300px] flex-1 flex-col rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden"
-            style={{
-              animation: 'soft-rise 0.5s ease both',
-              animationDelay: '60ms',
-            }}
-          >
+          <div className="flex w-full gap-4 overflow-x-auto pb-2 px-4 py-6">
+            <section
+              className={`relative flex flex-1 min-h-[70vh] max-h-[80vh] min-w-[300px] flex-col rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden transition-all duration-300 w-full`}
+              style={{
+                animation: 'soft-rise 0.5s ease both',
+                animationDelay: '60ms',
+              }}
+            >
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div className="flex-1">
                 <div className="text-xs uppercase tracking-[0.28em] text-slate-500">Thread</div>
-                <h2 className="text-xl font-semibold text-slate-900">{activeLabel}</h2>
+                {activeThreadId ? (
+                  <h2 
+                    onClick={() => setShowRoomInfo(true)}
+                    className="text-xl font-semibold text-slate-900 cursor-pointer hover:text-slate-700 transition-colors"
+                  >
+                    {activeLabel}
+                  </h2>
+                ) : (
+                  <h2 className="text-xl font-semibold text-slate-900">{activeLabel}</h2>
+                )}
                 <p className="text-xs text-slate-600">{activeHint}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -468,40 +485,52 @@ export function CommunityContent() {
               />
             </div>
 
-            <MessageInput
-              draftMessage={draftMessage}
-              replyingTo={replyingTo}
-              editingMessage={editingMessage}
-              editDraft={editDraft}
-              selectedFiles={selectedFiles}
-              previewUrls={previewUrls}
-              uploading={uploading}
-              uploadProgress={uploadProgress}
-              sending={sending}
-              inputDisabled={inputDisabled}
-              activeThreadId={activeThreadId}
-              activeLabel={activeLabel}
-              onDraftChange={setDraftMessage}
-              onEditDraftChange={setEditDraft}
-              onSend={() => handleSendMessage(messages, setMessages, setChannels, setDms, setError)}
-              onEditSave={() => handleEditMessage(messages, setMessages)}
-              onCancelReply={() => setReplyingTo(null)}
-              onCancelEdit={() => {
-                setEditingMessage(null);
-                setEditDraft('');
-              }}
-              onFileSelect={handleFileSelect}
-              onClearFiles={() => setSelectedFiles([])}
-              onTyping={() => handleTyping(wsRef)}
-            />
+            {user?.role === 'OBSERVER' ? (
+              <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-center">
+                <p className="text-sm text-slate-600">
+                  <span className="font-semibold">Read-only mode:</span> Observers can view channels but cannot send messages.
+                </p>
+              </div>
+            ) : (
+              <MessageInput
+                draftMessage={draftMessage}
+                replyingTo={replyingTo}
+                editingMessage={editingMessage}
+                editDraft={editDraft}
+                selectedFiles={selectedFiles}
+                previewUrls={previewUrls}
+                uploading={uploading}
+                uploadProgress={uploadProgress}
+                sending={sending}
+                inputDisabled={inputDisabled}
+                activeThreadId={activeThreadId}
+                activeLabel={activeLabel}
+                onDraftChange={setDraftMessage}
+                onEditDraftChange={setEditDraft}
+                onSend={() => handleSendMessage(messages, setMessages, setChannels, setDms, setError)}
+                onEditSave={() => handleEditMessage(messages, setMessages)}
+                onCancelReply={() => setReplyingTo(null)}
+                onCancelEdit={() => {
+                  setEditingMessage(null);
+                  setEditDraft('');
+                }}
+                onFileSelect={handleFileSelect}
+                onClearFiles={() => setSelectedFiles([])}
+                onTyping={() => handleTyping(wsRef)}
+              />
+            )}
           </section>
 
-          <ThreadInfo
-            activeChannel={activeChannel}
-            activeDm={activeDm}
-            activeType={activeType}
-            activeLabel={activeLabel}
-          />
+            {showRoomInfo && (
+              <ThreadInfo
+                activeChannel={activeChannel}
+                activeDm={activeDm}
+                activeType={activeType}
+                activeLabel={activeLabel}
+                onClose={() => setShowRoomInfo(false)}
+              />
+            )}
+          </div>
         </div>
       </div>
 

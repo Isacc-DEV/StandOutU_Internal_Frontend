@@ -171,7 +171,7 @@ export default function ManagerApplicationsPage() {
   }, [activeRange, customRange]);
 
   const bidderFilterLabel = useMemo(() => {
-    if (bidderOptions.length === 0) return 'No bidders';
+    if (bidderOptions.length === 0) return 'No users';
     if (!selectedBidderIds) return 'All';
     if (selectedBidderIds.size === 0) return 'None';
     return `${selectedBidderIds.size} selected`;
@@ -315,7 +315,7 @@ export default function ManagerApplicationsPage() {
               <input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search by bidder, profile, resume, URL, or date..."
+                placeholder="Search by user, profile, resume, URL, or date..."
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
               />
             </label>
@@ -374,7 +374,7 @@ export default function ManagerApplicationsPage() {
                 }}
                 className="flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-slate-600"
               >
-                <span>Bidder</span>
+                <span>Who</span>
                 <span className="text-[10px] font-semibold text-slate-400">{bidderFilterLabel}</span>
                 <svg
                   viewBox="0 0 24 24"
@@ -388,7 +388,7 @@ export default function ManagerApplicationsPage() {
               {bidderFilterOpen ? (
                 <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
                   <div className="flex items-center justify-between text-xs uppercase tracking-[0.14em] text-slate-500">
-                    <span>Bidders</span>
+                    <span>Who</span>
                     {selectedBidderIds ? (
                       <button
                         type="button"
@@ -401,7 +401,7 @@ export default function ManagerApplicationsPage() {
                   </div>
                   <div className="mt-3 max-h-52 space-y-2 overflow-auto pr-1">
                     {bidderOptions.length === 0 ? (
-                      <div className="text-xs text-slate-500">No bidders yet.</div>
+                      <div className="text-xs text-slate-500">No users yet.</div>
                     ) : (
                       bidderOptions.map((bidder) => {
                         const checked = selectedBidderIds

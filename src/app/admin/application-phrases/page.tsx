@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import AdminShell from '../../../components/AdminShell';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/useAuth';
@@ -170,9 +171,10 @@ export default function ApplicationPhrasesPage() {
               <button
                 onClick={addPhrase}
                 disabled={savingId === 'new'}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-60"
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-60"
+                aria-label="Add phrase"
               >
-                Add
+                <Plus className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -195,15 +197,17 @@ export default function ApplicationPhrasesPage() {
                         <button
                           onClick={() => saveEdit(phrase.id)}
                           disabled={savingId === phrase.id}
-                          className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-60"
+                          aria-label="Save changes"
                         >
-                          Save
+                          <Check className="h-4 w-4" />
                         </button>
                         <button
                           onClick={cancelEdit}
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-800 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                          aria-label="Cancel editing"
                         >
-                          Cancel
+                          <X className="h-4 w-4" />
                         </button>
                       </>
                     ) : (
@@ -217,16 +221,18 @@ export default function ApplicationPhrasesPage() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => startEdit(phrase)}
-                            className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-800 hover:bg-slate-100"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-800 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                            aria-label="Edit phrase"
                           >
-                            Edit
+                            <Pencil className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => removePhrase(phrase.id)}
                             disabled={savingId === phrase.id}
-                            className="rounded-full border border-red-200 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-700 transition hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:opacity-60"
+                            aria-label="Delete phrase"
                           >
-                            Delete
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </>

@@ -28,31 +28,31 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <aside
-      className="w-[260px] shrink-0 space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+      className="w-full space-y-4"
       style={{ animation: 'soft-rise 0.5s ease both' }}
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.26em] text-slate-500">Community</p>
-          <h1 className="text-lg font-semibold text-slate-900">Shared space</h1>
+          <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Community</p>
+          <h1 className="text-lg font-semibold text-slate-100">Shared space</h1>
         </div>
-        <span className="rounded-full bg-[var(--community-ink)] px-3 py-1 text-[10px] font-semibold text-[var(--community-accent)]">
+        <span className="rounded-full bg-slate-700 px-3 py-1 text-[10px] font-semibold text-[var(--community-accent)]">
           Live
         </span>
       </div>
 
       <div className="space-y-3">
-        <SectionHeader title="Channels" count={channels.length} />
+        <SectionHeader title="Channels" count={channels.length} variant="dark" />
         {overviewLoading && !channels.length ? (
-          <div className="border border-slate-200 bg-white px-3 py-3 text-xs text-slate-500">
+          <div className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-xs text-slate-400">
             Loading channels...
           </div>
         ) : channels.length === 0 ? (
-          <div className="border border-dashed border-slate-200 bg-white px-3 py-3 text-xs text-slate-500">
+          <div className="rounded-xl border border-dashed border-slate-700 bg-slate-800 px-3 py-3 text-xs text-slate-400">
             No channels yet.
           </div>
         ) : (
-          <div className="border border-slate-200 bg-white">
+          <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
             {channels.map((channel) => {
               const active = channel.id === activeThreadId;
               const unread = unreadMap.get(channel.id) || 0;
@@ -60,15 +60,15 @@ export function Sidebar({
                 <button
                   key={channel.id}
                   onClick={() => onThreadSelect(channel.id)}
-                  className={`flex w-full items-center justify-between border-b border-slate-200 px-3 py-2 text-left text-sm transition last:border-b-0 ${
+                  className={`flex w-full items-center justify-between border-b border-slate-700 px-3 py-2 text-left text-sm transition last:border-b-0 ${
                     active
-                      ? 'bg-[var(--community-ink)] text-white'
-                      : 'text-slate-700 hover:bg-[var(--community-soft)]'
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-300 hover:bg-slate-800'
                   }`}
                 >
                   <div className="flex flex-col flex-1">
                     <span className="flex items-center gap-2 font-semibold">
-                      <span className={`text-xs font-semibold ${active ? 'text-[var(--community-accent)]' : 'text-slate-400'}`}>#</span>
+                      <span className={`text-xs font-semibold ${active ? 'text-[var(--community-accent)]' : 'text-slate-500'}`}>#</span>
                       {channel.name ?? 'channel'}
                       {unread > 0 && (
                         <span className="ml-1 rounded-full bg-red-500 px-2 py-0.5 text-[10px] text-white">
@@ -77,13 +77,13 @@ export function Sidebar({
                       )}
                     </span>
                     {channel.description && (
-                      <span className={`text-[11px] ${active ? 'text-slate-200' : 'text-slate-500'}`}>
+                      <span className={`text-[11px] ${active ? 'text-slate-300' : 'text-slate-500'}`}>
                         {channel.description}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-[10px] ${active ? 'text-slate-200' : 'text-slate-400'}`}>
+                    <span className={`text-[10px] ${active ? 'text-slate-300' : 'text-slate-500'}`}>
                       {formatTime(channel.lastMessageAt ?? channel.createdAt)}
                     </span>
                   </div>
@@ -95,14 +95,14 @@ export function Sidebar({
       </div>
 
       <div className="space-y-2">
-        <div className="text-sm font-semibold text-slate-900">Direct Message</div>
+        <div className="text-sm font-semibold text-slate-100">Direct Message</div>
         <div className="max-h-[340px] space-y-2 overflow-y-auto pr-1">
           {overviewLoading && memberList.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+            <div className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-xs text-slate-400">
               Loading members...
             </div>
           ) : memberList.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">
+            <div className="rounded-xl border border-dashed border-slate-700 bg-slate-800 px-3 py-3 text-xs text-slate-400">
               No members available.
             </div>
           ) : (
@@ -110,17 +110,20 @@ export function Sidebar({
               const isStarting = creatingDmId === member.id;
               const dm = dmLookup.get(member.id);
               const unread = dm ? unreadMap.get(dm.id) || 0 : 0;
+              const isActive = dm?.id === activeThreadId;
               return (
                 <button
                   key={member.id}
                   onClick={() => onStartDm(member.id)}
                   disabled={Boolean(creatingDmId)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-[var(--community-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+                  className={`flex w-full items-center gap-3 rounded-2xl border border-slate-700 bg-slate-800 px-3 py-2 text-left transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isActive ? 'bg-slate-700' : ''
+                  }`}
                 >
-                  <AvatarBubble name={member.name} active={false} avatarUrl={member.avatarUrl} />
+                  <AvatarBubble name={member.userName} active={isActive} avatarUrl={member.avatarUrl} />
                   <div className="flex-1">
-                    <div className="text-sm font-semibold text-slate-900">{member.name}</div>
-                    {isStarting && <div className="mt-1 text-[10px] text-slate-500">Starting DM...</div>}
+                    <div className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-slate-200'}`}>{member.userName}</div>
+                    {isStarting && <div className="mt-1 text-[10px] text-slate-400">Starting DM...</div>}
                   </div>
                   {unread > 0 && (
                     <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] text-white">

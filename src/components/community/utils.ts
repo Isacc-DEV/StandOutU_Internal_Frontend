@@ -37,10 +37,10 @@ export function dedupeMessages<T extends { id?: string }>(list: T[]) {
   return unique;
 }
 
-export function formatDmTitle(dm: { participants?: { name: string; email: string }[] }) {
+export function formatDmTitle(dm: { participants?: { userName: string; email: string }[] }) {
   const participants = dm.participants ?? [];
   if (participants.length === 0) return 'Direct message';
-  return participants.map((p) => p.name || p.email).filter(Boolean).join(', ');
+  return participants.map((p) => p.userName || p.email).filter(Boolean).join(', ');
 }
 
 export function formatTime(value?: string | null) {

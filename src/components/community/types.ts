@@ -16,7 +16,7 @@ export type CommunityDmThread = {
   isPrivate: boolean;
   createdAt: string;
   lastMessageAt?: string | null;
-  participants?: { id: string; name: string; email: string; avatarUrl?: string | null }[];
+  participants?: { id: string; userName: string; email: string; avatarUrl?: string | null }[];
 };
 
 export type MessageAttachment = {
@@ -75,7 +75,7 @@ export type CommunityOverview = {
 
 export type DirectoryUser = {
   id: string;
-  name: string;
+  userName: string;
   email: string;
   role: string;
   avatarUrl?: string | null;
@@ -102,7 +102,7 @@ export type PinnedMessage = {
 
 export type User = {
   id: string;
-  name: string;
+  userName: string;
   email: string;
   role: string;
   avatarUrl?: string | null;

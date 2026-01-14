@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { FileText, Radio, Keyboard, X, Play, RefreshCw, Download, Sparkles, MessageCircle, Send } from "lucide-react";
 import TopNav from "../../components/TopNav";
 import { API_BASE } from "@/lib/api";
 
@@ -35,7 +36,7 @@ type WebviewHandle = HTMLElement & {
 type User = {
   id: string;
   email: string;
-  name: string;
+  userName: string;
   role: "ADMIN" | "MANAGER" | "BIDDER" | "OBSERVER";
 };
 
@@ -90,6 +91,7 @@ type Profile = {
   displayName: string;
   baseInfo: BaseInfo;
   baseResume?: BaseResume;
+  baseAdditionalBullets?: Record<string, number>;
   assignedBidderId?: string;
 };
 
@@ -267,11 +269,20 @@ export default function Page() {
   const [aiProvider, setAiProvider] = useState<"HUGGINGFACE" | "OPENAI" | "GEMINI">(
     "HUGGINGFACE"
   );
+  const [chatModalOpen, setChatModalOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatProvider, setChatProvider] = useState<"HUGGINGFACE" | "OPENAI" | "GEMINI">("HUGGINGFACE");
+  const chatMessagesEndRef = useRef<HTMLDivElement | null>(null);
+  const chatInputRef = useRef<HTMLInputElement | null>(null);
   const jdSelectionPollRef = useRef<number | null>(null);
   const jdDraftRef = useRef("");
   const jdPreviewOpenRef = useRef(false);
   const jdSelectionModeRef = useRef(false);
   const webviewRef = useRef<WebviewHandle | null>(null);
+  const [showGenerateResumeDropdown, setShowGenerateResumeDropdown] = useState(false);
+  const generateResumeDropdownRef = useRef<HTMLDivElement | null>(null);
   const setWebviewRef = useCallback((node: WebviewHandle | null) => {
     webviewRef.current = node;
     if (node) {
@@ -339,6 +350,25 @@ export default function Page() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        showGenerateResumeDropdown &&
+        generateResumeDropdownRef.current &&
+        !generateResumeDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowGenerateResumeDropdown(false);
+      }
+    }
+
+    if (showGenerateResumeDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [showGenerateResumeDropdown]);
 
   useEffect(() => {
     if (!isClient) return;
@@ -487,12 +517,16 @@ export default function Page() {
   }, [selectedProfileId]);
 
   useEffect(() => {
-    if (!selectedProfileId) {
+    if (!selectedProfileId || !selectedProfile) {
       setBulletCountByCompany({});
       return;
     }
-    setBulletCountByCompany(buildBulletCountDefaults(companyTitleKeys));
-  }, [selectedProfileId, companyTitleKeys]);
+    if (companyTitleKeys.length === 0) {
+      setBulletCountByCompany({});
+      return;
+    }
+    setBulletCountByCompany(buildBulletCountDefaults(companyTitleKeys, selectedProfile.baseAdditionalBullets));
+  }, [selectedProfileId, companyTitleKeys, selectedProfile]);
 
   useEffect(() => {
     if (!resumeTemplates.length) {
@@ -1187,6 +1221,7 @@ export default function Page() {
   }, []);
 
   async function handleGenerateResume() {
+    setShowGenerateResumeDropdown(false);
     if (!selectedProfile || !selectedProfileId) {
       showError("Select a profile before generating a resume.");
       return;
@@ -1220,6 +1255,20 @@ export default function Page() {
     } finally {
       setJdCaptureLoading(false);
     }
+  }
+
+  function handleManualJdInput() {
+    setShowGenerateResumeDropdown(false);
+    if (!selectedProfile || !selectedProfileId) {
+      showError("Select a profile before generating a resume.");
+      return;
+    }
+    setJdSelectionMode(false);
+    jdSelectionModeRef.current = false;
+    setJdPreviewOpen(true);
+    setJdCaptureError("");
+    setJdDraft("");
+    setJdCaptureLoading(false);
   }
 
   function handleCancelJd() {
@@ -1288,6 +1337,15 @@ export default function Page() {
         : mergeResumeData(baseResume, normalizeResumePatch(patchCandidate));
       const normalized = normalizeBaseResume(nextResume);
       setTailoredResume(normalized);
+      // Save resume_json and job_description for chat
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("last_resume_json", JSON.stringify(normalized));
+          localStorage.setItem("last_job_description", jdDraft.trim());
+        } catch (e) {
+          console.error("Failed to save resume data for chat", e);
+        }
+      }
     } catch (err) {
       console.error(err);
       const message = err instanceof Error ? err.message : "Resume generation failed.";
@@ -1343,6 +1401,15 @@ export default function Page() {
         : mergeResumeData(baseResume, normalizeResumePatch(patchCandidate));
       const normalized = normalizeBaseResume(nextResume);
       setTailoredResume(normalized);
+      // Save resume_json and job_description for chat
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("last_resume_json", JSON.stringify(normalized));
+          localStorage.setItem("last_job_description", jdDraft.trim());
+        } catch (e) {
+          console.error("Failed to save resume data for chat", e);
+        }
+      }
     } catch (err) {
       console.error(err);
       const message = err instanceof Error ? err.message : "Resume generation failed.";
@@ -1395,6 +1462,140 @@ export default function Page() {
     }
   }
 
+  async function handleOpenChatModal() {
+    setChatModalOpen(true);
+    setChatMessages([]);
+    setChatInput("");
+    
+    // Restore last generated resume_json and job_description
+    if (typeof window !== "undefined") {
+      try {
+        const savedResumeJson = localStorage.getItem("last_resume_json");
+        const savedJobDescription = localStorage.getItem("last_job_description");
+        
+        if (savedResumeJson && savedJobDescription) {
+          const resumeJson = JSON.parse(savedResumeJson);
+          // Send initial context
+          setChatMessages([
+            {
+              role: "assistant",
+              content: "I'm ready. I have your resume and job description. Ask me any interview questions!",
+            },
+          ]);
+        } else {
+          setChatMessages([
+            {
+              role: "assistant",
+              content: "I'm ready, but I don't have your resume or job description yet. Please generate a resume first, or provide them manually.",
+            },
+          ]);
+        }
+      } catch (e) {
+        console.error("Failed to restore resume data", e);
+        setChatMessages([
+          {
+            role: "assistant",
+            content: "I'm ready. Please provide your resume and job description.",
+          },
+        ]);
+      }
+    }
+  }
+
+  async function handleSendChatMessage() {
+    if (!chatInput.trim() || chatLoading) return;
+    
+    const question = chatInput.trim();
+    setChatInput("");
+    setChatMessages((prev) => [...prev, { role: "user", content: question }]);
+    setChatLoading(true);
+    
+    try {
+      // Get saved resume_json and job_description
+      let resumeJson: BaseResume | null = null;
+      let jobDescription = "";
+      
+      if (typeof window !== "undefined") {
+        try {
+          const savedResumeJson = localStorage.getItem("last_resume_json");
+          const savedJobDescription = localStorage.getItem("last_job_description");
+          
+          if (savedResumeJson) {
+            resumeJson = JSON.parse(savedResumeJson);
+          }
+          if (savedJobDescription) {
+            jobDescription = savedJobDescription;
+          }
+        } catch (e) {
+          console.error("Failed to load saved data", e);
+        }
+      }
+      
+      // Fallback to current state if not in localStorage
+      if (!resumeJson && tailoredResume) {
+        resumeJson = tailoredResume;
+      }
+      if (!jobDescription && jdDraft.trim()) {
+        jobDescription = jdDraft.trim();
+      }
+      
+      if (!jobDescription) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "I need a job description to answer your question. Please generate a resume with a job description first.",
+          },
+        ]);
+        return;
+      }
+      
+      const payload: Record<string, unknown> = {
+        resumeJson: resumeJson || {},
+        jobDescription,
+        question,
+        provider: chatProvider,
+      };
+      
+      const response = (await api("/llm/interview-chat", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })) as { content?: string; provider?: string; model?: string };
+      
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: response.content || "I'm sorry, I couldn't generate a response.",
+        },
+      ]);
+    } catch (err) {
+      console.error(err);
+      const message = err instanceof Error ? err.message : "Failed to get response.";
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Error: ${message}`,
+        },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (chatModalOpen) {
+      if (chatMessagesEndRef.current) {
+        chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+      // Auto-focus input when modal opens
+      setTimeout(() => {
+        chatInputRef.current?.focus();
+      }, 100);
+    }
+  }, [chatModalOpen, chatMessages]);
+
   useEffect(() => {
     const fetchForUser = async () => {
       if (!user || user.role === "OBSERVER") return;
@@ -1407,6 +1608,7 @@ export default function Page() {
         const normalized = visible.map((p) => ({
           ...p,
           baseInfo: cleanBaseInfo(p.baseInfo ?? {}),
+          baseAdditionalBullets: p.baseAdditionalBullets ?? {},
         }));
         setProfiles(normalized);
         const defaultProfileId = normalized[0]?.id ?? "";
@@ -1462,11 +1664,237 @@ export default function Page() {
           aria-hidden="true"
         />
       ) : null}
-      <div className="mx-auto w-full min-h-screen pl-4 space-y-4">
+      <div className="mx-auto w-full min-h-screen pr-4 space-y-4 pt-[57px]">
         {user ? null : null}
 
         {user ? (
-        <div className="grid gap-2 min-h-screen xl:grid-cols-[90fr_10fr]">
+        <div className="grid gap-4 min-h-screen xl:grid-cols-[280px_1fr]">
+          <section
+            className="flex flex-col gap-2 bg-[#0b1224] text-slate-100"
+            style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
+          >
+            <div className="p-4 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Workspace</p>
+                  <h1 className="text-lg font-semibold text-slate-100">Job Application</h1>
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-700 p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
+                      Profile:
+                    </p>
+                  </div>
+
+                  <select
+                    value={selectedProfileId}
+                    onChange={(e) => setSelectedProfileId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-transparent transition focus:border-slate-500 focus:ring-slate-500"
+                  >
+                    {profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-700 p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">Service</p>
+
+                  <select
+                    value={aiProvider}
+                    onChange={(event) =>
+                      setAiProvider(event.target.value as "OPENAI" | "HUGGINGFACE" | "GEMINI")
+                    }
+                    className="w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-transparent transition focus:border-slate-500 focus:ring-slate-500"
+                  >
+                    <option value="HUGGINGFACE">Hugging Face</option>
+                    <option value="OPENAI">OpenAI</option>
+                    <option value="GEMINI">Gemini</option>
+                  </select>
+                </div>
+                <div className="mt-4 relative" ref={generateResumeDropdownRef}>
+                  <button
+                    onClick={() => setShowGenerateResumeDropdown(!showGenerateResumeDropdown)}
+                    disabled={!selectedProfileId || tailorLoading || jdCaptureLoading || jdSelectionMode}
+                    className="flex items-center justify-center gap-2 w-full rounded-xl bg-indigo-400 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                    title={jdCaptureLoading ? "Reading JD..." : tailorLoading ? "Generating..." : "Generate Resume"}
+                  >
+                    {jdCaptureLoading ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                        <span>Reading JD...</span>
+                      </>
+                    ) : tailorLoading ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-5 h-5" />
+                      </>
+                    )}
+                    <span>
+                      {jdCaptureLoading
+                        ? "Reading JD..."
+                        : tailorLoading
+                        ? "Generating..."
+                        : "Generate Resume"}
+                    </span>
+                  </button>
+                  {showGenerateResumeDropdown && (
+                    <div
+                      className="absolute top-full left-0 right-0 mt-2 rounded-xl border border-slate-600 bg-slate-800 shadow-lg z-50"
+                      onMouseLeave={() => setShowGenerateResumeDropdown(false)}
+                    >
+                      <button
+                        onClick={handleGenerateResume}
+                        disabled={!selectedProfileId || tailorLoading || jdCaptureLoading || jdSelectionMode || !isElectron}
+                        className="flex items-center justify-center w-full rounded-t-xl px-4 py-2.5 text-slate-100 transition hover:bg-slate-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                        title="JD From Stream"
+                      >
+                        <Radio className="w-5 h-5 mr-2 pr-1" />
+                        <span>JD From Stream</span>
+                      </button>
+                      <div className="h-px bg-slate-600" />
+                      <button
+                        onClick={handleManualJdInput}
+                        disabled={!selectedProfileId || tailorLoading || jdCaptureLoading || jdSelectionMode}
+                        className="flex items-center justify-center w-full rounded-b-xl px-4 py-2.5 text-slate-100 transition hover:bg-slate-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                        title="JD Manually Input"
+                      >
+                        <Keyboard className="w-5 h-5 mr-2 pr-1" />
+                        <span> JD Manually Input</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-700 p-4 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
+                      Autofill
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-500">Ctrl + Shift + F</span>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-800 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-100">
+                      LLM fallback
+                    </p>
+                  </div>
+
+                <button onClick={() => setUseLlmAutofill((v) => !v)}
+                    className={`relative flex h-6 w-12 items-center rounded-full transition ${
+                      useLlmAutofill ? "bg-emerald-400" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
+                        useLlmAutofill ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                    <span className="sr-only">Toggle LLM autofill</span>
+                  </button>
+                </div>
+
+                {/* Action */}
+                <button
+                  onClick={handleAutofill}
+                  disabled={!session || loadingAction === "autofill"}
+                  className="flex items-center justify-center w-full rounded-xl bg-indigo-400 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                  title={loadingAction === "autofill" ? "Filling…" : "Autofill"}
+                >
+                  {loadingAction === "autofill" ? (
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-5 h-5 mr-2 pr-1" />
+                  )}
+                  <span>
+                    {loadingAction === "autofill" ? "Filling…" : "Autofill"}
+                  </span>
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-slate-700 p-4 shadow-sm space-y-4">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
+                    Base info
+                  </p>
+
+                  <button
+                    onClick={() => setShowBaseInfo((v) => !v)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400
+                              transition hover:bg-slate-800 hover:text-slate-200"
+                    aria-label={showBaseInfo ? "Collapse" : "Expand"}
+                  >
+                    <svg
+                      className={`h-4 w-4 transition-transform ${
+                        showBaseInfo ? "rotate-90" : ""
+                      }`}
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Content */}
+                {showBaseInfo ? (
+                  <div className="rounded-2xl p-4">
+                    <div className="space-y-2 text-sm ">
+                      <EditableRow label="First name" editing={false} value={baseDraft?.name?.first || "N/A"} />
+                      <EditableRow label="Last name" editing={false} value={baseDraft?.name?.last || "N/A"} />
+                      <EditableRow label="Email" editing={false} value={baseDraft?.contact?.email || "N/A"} />
+                      <EditableRow label="Phone code" editing={false} value={baseDraft?.contact?.phoneCode || "N/A"} />
+                      <EditableRow label="Phone number" editing={false} value={baseDraft?.contact?.phoneNumber || "N/A"} />
+                      <EditableRow label="Phone (combined)" editing={false} value={formatPhone(baseDraft.contact) || "N/A"} />
+                      <EditableRow label="LinkedIn" editing={false} value={baseDraft?.links?.linkedin || "N/A"} />
+
+                      <div className="my-3 h-px w-full bg-slate-200/60" />
+
+                      <EditableRow label="Address" editing={false} value={baseDraft?.location?.address || "N/A"} />
+                      <EditableRow label="City" editing={false} value={baseDraft?.location?.city || "N/A"} />
+                      <EditableRow label="State / Province" editing={false} value={baseDraft?.location?.state || "N/A"} />
+                      <EditableRow label="Country" editing={false} value={baseDraft?.location?.country || "N/A"} />
+                      <EditableRow label="Postal code" editing={false} value={baseDraft?.location?.postalCode || "N/A"} />
+
+                      <div className="my-3 h-px w-full bg-slate-200/60" />
+
+                      <EditableRow label="Job title" editing={false} value={baseDraft?.career?.jobTitle || "N/A"} />
+                      <EditableRow label="Current company" editing={false} value={baseDraft?.career?.currentCompany || "N/A"} />
+                      <EditableRow label="Years of experience" editing={false} value={(baseDraft?.career?.yearsExp as string) || "N/A"} />
+                      <EditableRow label="Desired salary" editing={false} value={baseDraft?.career?.desiredSalary || "N/A"} />
+
+                      <div className="my-3 h-px w-full bg-slate-200/60" />
+
+                      <EditableRow label="School" editing={false} value={baseDraft?.education?.school || "N/A"} />
+                      <EditableRow label="Degree" editing={false} value={baseDraft?.education?.degree || "N/A"} />
+                      <EditableRow label="Major / field" editing={false} value={baseDraft?.education?.majorField || "N/A"} />
+                      <EditableRow label="Graduation date" editing={false} value={baseDraft?.education?.graduationAt || "N/A"} />
+
+
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+            </div>
+          </section>
           <section className="flex flex-col gap-2">
             <div
               className={`relative overflow-hidden p-4 ${
@@ -1484,7 +1912,7 @@ export default function Page() {
                   <button
                     onClick={handleGo}
                     disabled={loadingAction === "go" || !selectedProfileId}
-                    className="min-w-[110px] rounded-xl bg-[#4ade80] px-4 py-2 text-sm font-semibold text-[#0b1224] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="min-w-[110px] rounded-xl bg-[#6366f1] px-4 py-2 text-sm font-semibold text-[#0b1224] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {loadingAction === "go" ? "Connecting..." : "Go"}
                   </button>
@@ -1607,171 +2035,6 @@ export default function Page() {
               </div>
             </div>
           </section>
-          <section
-            className="flex flex-col gap-2 bg-[#0b1224] text-slate-100"
-            style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
-          >
-            <div className="space-y-4 rounded-3xl p-4">
-              <div className="rounded-3xl border border-slate-700 p-5 shadow-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
-                      Profile:
-                    </p>
-                  </div>
-
-                  <select
-                    value={selectedProfileId}
-                    onChange={(e) => setSelectedProfileId(e.target.value)}
-                    className="min-w-[200px] rounded-xl border border-slate-100 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-transparent transition focus:border-slate-300 focus:ring-slate-300"
-                  >
-                    {profiles.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-slate-700 p-5 shadow-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">Service</p>
-
-                  <select
-                    value={aiProvider}
-                    onChange={(event) =>
-                      setAiProvider(event.target.value as "OPENAI" | "HUGGINGFACE" | "GEMINI")
-                    }
-                    className="min-w-[200px] rounded-xl border border-slate-100 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-transparent transition focus:border-slate-300 focus:ring-slate-300"
-                  >
-                    <option value="HUGGINGFACE">Hugging Face</option>
-                    <option value="OPENAI">OpenAI</option>
-                    <option value="GEMINI">Gemini</option>
-                  </select>
-                </div>
-                <div className="mt-4">
-                  <button
-                    onClick={handleGenerateResume}
-                    disabled={!selectedProfileId || tailorLoading || jdCaptureLoading || jdSelectionMode}
-                    className="w-full rounded-2xl bg-indigo-400 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {jdCaptureLoading ? "Reading JD..." : tailorLoading ? "Generating..." : "Generate Resume"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-slate-700 p-5 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
-                      Autofill
-                    </p>
-                  </div>
-                  <span className="text-xs text-slate-500">Ctrl + Shift + F</span>
-                </div>
-
-                <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-800 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-100">
-                      LLM fallback
-                    </p>
-                  </div>
-
-                <button onClick={() => setUseLlmAutofill((v) => !v)}
-                    className={`relative flex h-6 w-12 items-center rounded-full transition ${
-                      useLlmAutofill ? "bg-emerald-400" : "bg-slate-300"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
-                        useLlmAutofill ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                    <span className="sr-only">Toggle LLM autofill</span>
-                  </button>
-                </div>
-
-                {/* Action */}
-                <button
-                  onClick={handleAutofill}
-                  disabled={!session || loadingAction === "autofill"}
-                  className="w-full rounded-2xl bg-indigo-400 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loadingAction === "autofill" ? "Filling…" : "Autofill"}
-                </button>
-              </div>
-
-              <div className="rounded-3xl border border-slate-700 p-5 shadow-sm space-y-4">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
-                    Base info
-                  </p>
-
-                  <button
-                    onClick={() => setShowBaseInfo((v) => !v)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500
-                              transition hover:bg-slate-100 hover:text-slate-900"
-                    aria-label={showBaseInfo ? "Collapse" : "Expand"}
-                  >
-                    <svg
-                      className={`h-4 w-4 transition-transform ${
-                        showBaseInfo ? "rotate-90" : ""
-                      }`}
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M9 18l6-6-6-6" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Content */}
-                {showBaseInfo ? (
-                  <div className="rounded-2xl p-4">
-                    <div className="space-y-2 text-sm ">
-                      <EditableRow label="First name" editing={false} value={baseDraft?.name?.first || "N/A"} />
-                      <EditableRow label="Last name" editing={false} value={baseDraft?.name?.last || "N/A"} />
-                      <EditableRow label="Email" editing={false} value={baseDraft?.contact?.email || "N/A"} />
-                      <EditableRow label="Phone code" editing={false} value={baseDraft?.contact?.phoneCode || "N/A"} />
-                      <EditableRow label="Phone number" editing={false} value={baseDraft?.contact?.phoneNumber || "N/A"} />
-                      <EditableRow label="Phone (combined)" editing={false} value={formatPhone(baseDraft.contact) || "N/A"} />
-                      <EditableRow label="LinkedIn" editing={false} value={baseDraft?.links?.linkedin || "N/A"} />
-
-                      <div className="my-3 h-px w-full bg-slate-200/60" />
-
-                      <EditableRow label="Address" editing={false} value={baseDraft?.location?.address || "N/A"} />
-                      <EditableRow label="City" editing={false} value={baseDraft?.location?.city || "N/A"} />
-                      <EditableRow label="State / Province" editing={false} value={baseDraft?.location?.state || "N/A"} />
-                      <EditableRow label="Country" editing={false} value={baseDraft?.location?.country || "N/A"} />
-                      <EditableRow label="Postal code" editing={false} value={baseDraft?.location?.postalCode || "N/A"} />
-
-                      <div className="my-3 h-px w-full bg-slate-200/60" />
-
-                      <EditableRow label="Job title" editing={false} value={baseDraft?.career?.jobTitle || "N/A"} />
-                      <EditableRow label="Current company" editing={false} value={baseDraft?.career?.currentCompany || "N/A"} />
-                      <EditableRow label="Years of experience" editing={false} value={(baseDraft?.career?.yearsExp as string) || "N/A"} />
-                      <EditableRow label="Desired salary" editing={false} value={baseDraft?.career?.desiredSalary || "N/A"} />
-
-                      <div className="my-3 h-px w-full bg-slate-200/60" />
-
-                      <EditableRow label="School" editing={false} value={baseDraft?.education?.school || "N/A"} />
-                      <EditableRow label="Degree" editing={false} value={baseDraft?.education?.degree || "N/A"} />
-                      <EditableRow label="Major / field" editing={false} value={baseDraft?.education?.majorField || "N/A"} />
-                      <EditableRow label="Graduation date" editing={false} value={baseDraft?.education?.graduationAt || "N/A"} />
-
-
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-            </div>
-          </section>
         </div>
         ) : (
           <div />
@@ -1801,9 +2064,10 @@ export default function Page() {
                 <button
                   type="button"
                   onClick={handleCancelJd}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 transition"
+                  title="Cancel"
                 >
-                  Cancel
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1812,7 +2076,7 @@ export default function Page() {
               <textarea
                 value={jdDraft}
                 onChange={(event) => setJdDraft(event.target.value)}
-                placeholder={jdCaptureLoading ? "Enable selection mode..." : "Selected job description"}
+                placeholder={jdCaptureLoading ? "Enable selection mode..." : jdSelectionMode ? "Selected job description" : "Paste job description here..."}
                 className="h-80 w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
                 disabled={jdCaptureLoading}
               />
@@ -1881,25 +2145,32 @@ export default function Page() {
                   type="button"
                   onClick={handleConfirmJd}
                   disabled={jdCaptureLoading || !jdDraft.trim() || tailorLoading}
-                  className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                  className="flex items-center justify-center rounded-full bg-slate-900 p-2.5 text-white hover:bg-slate-800 disabled:opacity-60 transition"
+                  title={tailorLoading ? "Generating..." : "Generate"}
                 >
-                  {tailorLoading ? "Generating..." : "Generate"}
+                  {tailorLoading ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={handleReselectJd}
                   disabled={jdCaptureLoading || tailorLoading}
-                  className="rounded-full border border-slate-200 px-4 py-1.5 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                  className="flex items-center justify-center rounded-full border border-slate-200 p-2.5 text-slate-700 hover:bg-slate-100 disabled:opacity-60 transition"
+                  title="Reselect"
                 >
-                  Reselect
+                  <RefreshCw className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
                   onClick={handleCancelJd}
                   disabled={jdCaptureLoading || tailorLoading}
-                  className="rounded-full border border-slate-200 px-4 py-1.5 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                  className="flex items-center justify-center rounded-full border border-slate-200 p-2.5 text-slate-700 hover:bg-slate-100 disabled:opacity-60 transition"
+                  title="Cancel"
                 >
-                  Cancel
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1932,32 +2203,44 @@ export default function Page() {
                   type="button"
                   onClick={handleDownloadTailoredPdf}
                   disabled={tailorPdfLoading || !resumePreviewHtml.trim()}
-                  className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                  className="flex items-center justify-center rounded-full bg-slate-900 p-2 text-white hover:bg-slate-800 disabled:opacity-60 transition"
+                  title={tailorPdfLoading ? "Saving..." : "Save PDF"}
                 >
-                  {tailorPdfLoading ? "Saving..." : "Save PDF"}
+                  {tailorPdfLoading ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={handleRegenerateResume}
                   disabled={tailorLoading || !jdDraft.trim()}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 disabled:opacity-60 transition"
+                  title={tailorLoading ? "Generating..." : "Regenerate"}
                 >
-                  {tailorLoading ? "Generating..." : "Regenerate"}
+                  {tailorLoading ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={handleGenerateResume}
                   disabled={tailorLoading}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 disabled:opacity-60 transition"
+                  title="Reselect JD"
                 >
-                  Reselect JD
+                  <Radio className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => setResumePreviewOpen(false)}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 transition"
+                  title="Close"
                 >
-                  Close
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -2032,6 +2315,137 @@ export default function Page() {
                   </pre>
                 </details>
               ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Assistant Button - Fixed Bottom Right */}
+      <button
+        onClick={handleOpenChatModal}
+        className="group fixed bottom-6 right-6 z-50 flex items-center gap-0 rounded-full bg-indigo-500 p-3 text-white shadow-lg transition-all duration-300 hover:bg-indigo-600 hover:shadow-xl hover:px-4 active:scale-95"
+        title="AI Assistant"
+      >
+        <MessageCircle className="h-6 w-6 flex-shrink-0" />
+        <span className="max-w-0 overflow-hidden whitespace-nowrap text-sm font-medium opacity-0 transition-all duration-300 group-hover:max-w-[120px] group-hover:ml-2 group-hover:opacity-100">
+          AI Assistant
+        </span>
+      </button>
+
+      {/* Chat Modal */}
+      {chatModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+          onClick={() => setChatModalOpen(false)}
+        >
+          <div
+            className="flex h-[80vh] w-full max-w-2xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <MessageCircle className="h-5 w-5 text-indigo-500" />
+                <h2 className="text-xl font-semibold text-slate-900">AI Assistant</h2>
+              </div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={chatProvider}
+                  onChange={(e) =>
+                    setChatProvider(e.target.value as "OPENAI" | "HUGGINGFACE" | "GEMINI")
+                  }
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 outline-none ring-1 ring-transparent transition focus:border-indigo-500 focus:ring-indigo-500"
+                >
+                  <option value="HUGGINGFACE">Hugging Face</option>
+                  <option value="OPENAI">OpenAI</option>
+                  <option value="GEMINI">Gemini</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setChatModalOpen(false)}
+                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 transition"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {chatMessages.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                  Starting conversation...
+                </div>
+              ) : (
+                chatMessages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                        msg.role === "user"
+                          ? "bg-indigo-500 text-white"
+                          : "bg-slate-100 text-slate-900"
+                      }`}
+                    >
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] rounded-2xl bg-slate-100 px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]"></div>
+                      <div className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.15s]"></div>
+                      <div className="h-2 w-2 animate-bounce rounded-full bg-slate-400"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={chatMessagesEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="border-t border-slate-200 px-6 py-4">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleSendChatMessage();
+                }}
+                className="flex items-center gap-3"
+              >
+                <input
+                  ref={chatInputRef}
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Ask an interview question..."
+                  disabled={chatLoading}
+                  className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none ring-1 ring-transparent transition focus:border-indigo-500 focus:ring-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void handleSendChatMessage();
+                    }
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={!chatInput.trim() || chatLoading}
+                  className="flex items-center justify-center rounded-xl bg-indigo-500 p-2.5 text-white transition hover:bg-indigo-600 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="Send"
+                >
+                  {chatLoading ? (
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Send className="h-5 w-5" />
+                  )}
+                </button>
+              </form>
             </div>
           </div>
         </div>
@@ -2373,11 +2787,46 @@ function buildPromptCompanyTitleKey(item: WorkExperience) {
   return title || company || "";
 }
 
-function buildBulletCountDefaults(keys: string[]) {
+function normalizeKeyForMatch(key: string): string {
+  return cleanString(key)
+    .replace(/[–—−]/g, "-")
+    .replace(/\s*-\s*/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function buildBulletCountDefaults(keys: string[], profileDefaults?: Record<string, number>) {
   const result: Record<string, number> = {};
+  
+  // Create a normalized lookup map from profile defaults
+  const normalizedDefaults = new Map<string, { originalKey: string; value: number }>();
+  if (profileDefaults) {
+    Object.entries(profileDefaults).forEach(([key, value]) => {
+      if (typeof value === "number") {
+        const normalized = normalizeKeyForMatch(key);
+        if (normalized) {
+          normalizedDefaults.set(normalized, { originalKey: key, value });
+        }
+      }
+    });
+  }
+  
   keys.forEach((key, index) => {
     if (!key) return;
-    result[key] = index === 0 ? 3 : 1;
+    const normalizedKey = normalizeKeyForMatch(key);
+    // Try exact match first
+    if (profileDefaults && typeof profileDefaults[key] === "number") {
+      result[key] = profileDefaults[key];
+    } 
+    // Try normalized match
+    else if (normalizedDefaults.has(normalizedKey)) {
+      result[key] = normalizedDefaults.get(normalizedKey)!.value;
+    } 
+    // Fall back to static defaults
+    else {
+      result[key] = index === 0 ? 3 : 1;
+    }
   });
   return result;
 }

@@ -78,7 +78,7 @@ export default function NotificationsPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#f4f8ff] via-[#eef2ff] to-white text-slate-900">
       <TopNav />
-      <div className="mx-auto w-full max-w-4xl px-6 py-10">
+      <div className="mx-auto w-full max-w-4xl px-6 py-10 pt-[65px]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Notifications</p>

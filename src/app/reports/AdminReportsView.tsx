@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, Calendar, XCircle, CheckCircle, X, FileText, Download, Users, Clock, Eye, CalendarDays, BarChart3, AlertCircle, CheckCircle2 } from 'lucide-react';
 import FullCalendar from '@fullcalendar/react';
 import type {
   DatesSetArg,
@@ -11,7 +12,8 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin, { type DateClickArg } from '@fullcalendar/interaction';
 import { api } from '../../lib/api';
 import type { ClientUser } from '../../lib/auth';
-import { triggerNotificationRefresh } from '../../lib/notifications';
+import { setReportsLastSeen } from '../../lib/notifications';
+import { useAuth } from '../../lib/useAuth';
 
 type DailyReportStatus = 'draft' | 'in_review' | 'accepted' | 'rejected';
 
@@ -58,7 +60,8 @@ type ViewRange = {
   end: string;
 };
 
-type ViewMode = 'day' | 'user';
+type ViewMode = 'dashboard' | 'all' | 'in_review';
+type DisplayMode = 'day' | 'user';
 
 type CountByDate = {
   reportDate: string;
@@ -185,8 +188,20 @@ function initialsFor(name?: string | null) {
     .toUpperCase();
 }
 
+function formatShortDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date);
+}
+
 export default function AdminReportsView({ token }: { token: string | null }) {
-  const [viewMode, setViewMode] = useState<ViewMode>('day');
+  const { user } = useAuth();
+  const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('day');
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const [calendarRange, setCalendarRange] = useState<ViewRange | null>(null);
   const [dateReports, setDateReports] = useState<DailyReportWithUser[]>([]);
@@ -201,8 +216,14 @@ export default function AdminReportsView({ token }: { token: string | null }) {
   const [userLoading, setUserLoading] = useState(false);
   const [userError, setUserError] = useState('');
   const [inReviewReports, setInReviewReports] = useState<InReviewReport[]>([]);
+  const [inReviewReportsWithUser, setInReviewReportsWithUser] = useState<DailyReportWithUser[]>([]);
+  const [inReviewLoading, setInReviewLoading] = useState(false);
+  const [inReviewError, setInReviewError] = useState('');
+  const [selectedUserIdFilter, setSelectedUserIdFilter] = useState<string | null>(null);
+  const [dateSortOrder, setDateSortOrder] = useState<'asc' | 'desc'>('desc');
   const [acceptedByDate, setAcceptedByDate] = useState<Map<string, number>>(new Map());
-  const [modalReport, setModalReport] = useState<DailyReportWithUser | null>(null);
+  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
+  const [selectedReportForDetail, setSelectedReportForDetail] = useState<DailyReportWithUser | null>(null);
   const [modalAttachments, setModalAttachments] = useState<DailyReportAttachment[]>([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [attachmentsError, setAttachmentsError] = useState('');
@@ -352,33 +373,104 @@ export default function AdminReportsView({ token }: { token: string | null }) {
     void fetchUsers();
   }, [token, fetchUsers]);
 
+  // Initialize calendar range on mount or when switching to views that need it
   useEffect(() => {
-    if (!token) return;
-    if (viewMode !== 'day') return;
-    void fetchReportsByDate(selectedDate);
-  }, [token, viewMode, selectedDate, fetchReportsByDate]);
+    if (calendarRange) return;
+    if (viewMode !== 'dashboard' && viewMode !== 'in_review' && !(viewMode === 'all' && displayMode === 'day')) return;
+    const today = toDateKey(new Date());
+    const start = new Date();
+    start.setMonth(start.getMonth() - 1);
+    const end = new Date();
+    end.setMonth(end.getMonth() + 1);
+    setCalendarRange({ start: toDateKey(start), end: toDateKey(end) });
+  }, [calendarRange, viewMode, displayMode]);
+
+  const fetchInReviewReportsWithUser = useCallback(async (range: ViewRange) => {
+    setInReviewLoading(true);
+    setInReviewError('');
+    try {
+      const params = new URLSearchParams({ start: range.start, end: range.end });
+      const inReviewData = await api<InReviewReport[]>(
+        `/admin/daily-reports/in-review?${params.toString()}`,
+      );
+      const inReviewList = Array.isArray(inReviewData) ? inReviewData : [];
+      setInReviewReports(inReviewList);
+      
+      // Fetch full report details - group by date to minimize API calls
+      const dateMap = new Map<string, InReviewReport[]>();
+      inReviewList.forEach((report) => {
+        const existing = dateMap.get(report.reportDate) || [];
+        dateMap.set(report.reportDate, [...existing, report]);
+      });
+      
+      const reportsWithUser: DailyReportWithUser[] = [];
+      const datePromises = Array.from(dateMap.entries()).map(async ([date, reports]) => {
+        try {
+          const dateReports = await api<DailyReportWithUser[]>(
+            `/admin/daily-reports/by-date?date=${encodeURIComponent(date)}`,
+          );
+          const dateReportsList = Array.isArray(dateReports) ? dateReports : [];
+          reports.forEach((inReview) => {
+            const report = dateReportsList.find((r) => r.id === inReview.id && r.status === 'in_review');
+            if (report) {
+              reportsWithUser.push(report);
+            }
+          });
+        } catch (err) {
+          console.error(`Failed to fetch reports for date ${date}:`, err);
+        }
+      });
+      
+      await Promise.all(datePromises);
+      setInReviewReportsWithUser(reportsWithUser);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to load in-review reports.';
+      setInReviewError(message);
+      setInReviewReportsWithUser([]);
+      setInReviewReports([]);
+    } finally {
+      setInReviewLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!token) return;
-    if (viewMode !== 'day') return;
+    if (viewMode !== 'all' && viewMode !== 'dashboard') return;
+    if (displayMode !== 'day' && viewMode !== 'dashboard') return;
+    void fetchReportsByDate(selectedDate);
+  }, [token, viewMode, displayMode, selectedDate, fetchReportsByDate]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (viewMode !== 'all' && viewMode !== 'dashboard') return;
+    if (displayMode !== 'day' && viewMode !== 'dashboard') return;
     if (!calendarRange) return;
     void fetchAcceptedByDate(calendarRange);
-  }, [token, viewMode, calendarRange, fetchAcceptedByDate]);
+  }, [token, viewMode, displayMode, calendarRange, fetchAcceptedByDate]);
 
   useEffect(() => {
     if (!token) return;
-    if (viewMode !== 'user') return;
+    if (viewMode !== 'all') return;
+    if (displayMode !== 'user') return;
     if (!selectedUserId) return;
     void fetchReportsByUser(selectedUserId, weekStart);
-  }, [token, viewMode, selectedUserId, weekStart, fetchReportsByUser]);
+  }, [token, viewMode, displayMode, selectedUserId, weekStart, fetchReportsByUser]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (viewMode !== 'in_review') return;
+    if (!calendarRange) return;
+    void fetchInReviewReportsWithUser(calendarRange);
+  }, [token, viewMode, calendarRange, fetchInReviewReportsWithUser]);
 
   const inReviewRange = useMemo(() => {
-    if (viewMode === 'day') return calendarRange;
-    if (viewMode === 'user') {
+    if (viewMode === 'dashboard' || (viewMode === 'all' && displayMode === 'day')) return calendarRange;
+    if (viewMode === 'all' && displayMode === 'user') {
       return { start: weekStart, end: shiftDate(weekStart, 6) };
     }
+    if (viewMode === 'in_review') return calendarRange;
     return null;
-  }, [viewMode, calendarRange, weekStart]);
+  }, [viewMode, displayMode, calendarRange, weekStart]);
 
   useEffect(() => {
     if (!token || !inReviewRange) return;
@@ -409,7 +501,8 @@ export default function AdminReportsView({ token }: { token: string | null }) {
 
   useEffect(() => {
     if (!token) return;
-    if (viewMode !== 'day') return;
+    if (viewMode !== 'all' && viewMode !== 'dashboard') return;
+    if (displayMode !== 'day' && viewMode !== 'dashboard') return;
     if (!selectedDate) return;
     if (inReviewReports.length === 0) return;
     const relevant = inReviewReports.filter((report) => report.reportDate === selectedDate);
@@ -429,6 +522,7 @@ export default function AdminReportsView({ token }: { token: string | null }) {
   }, [
     token,
     viewMode,
+    displayMode,
     selectedDate,
     inReviewReports,
     dateReports,
@@ -437,7 +531,8 @@ export default function AdminReportsView({ token }: { token: string | null }) {
 
   useEffect(() => {
     if (!token) return;
-    if (viewMode !== 'user') return;
+    if (viewMode !== 'all') return;
+    if (displayMode !== 'user') return;
     if (!selectedUserId) return;
     if (inReviewReports.length === 0) return;
     const relevant = inReviewReports.filter((report) => report.userId === selectedUserId);
@@ -457,6 +552,7 @@ export default function AdminReportsView({ token }: { token: string | null }) {
   }, [
     token,
     viewMode,
+    displayMode,
     selectedUserId,
     weekStart,
     inReviewReports,
@@ -469,8 +565,10 @@ export default function AdminReportsView({ token }: { token: string | null }) {
     const endExclusive = normalizeDateKey(info.endStr);
     const end = shiftDate(endExclusive, -1);
     setCalendarRange({ start, end });
-    setSelectedDate((prev) => (prev ? prev : start));
-  }, []);
+    if (!selectedDate || selectedDate < start || selectedDate > end) {
+      setSelectedDate(start);
+    }
+  }, [selectedDate]);
 
   const handleDateClick = useCallback((info: DateClickArg) => {
     setSelectedDate(normalizeDateKey(info.dateStr));
@@ -481,28 +579,35 @@ export default function AdminReportsView({ token }: { token: string | null }) {
     setSelectedDate(toDateKey(info.event.start));
   }, []);
 
-  const openModalForReport = useCallback(
-    (report: DailyReport, withUser?: ClientUser | null) => {
+  const openDetailPanel = useCallback(
+    (report: DailyReport | DailyReportWithUser, withUser?: ClientUser | null) => {
       const next: DailyReportWithUser = {
         ...report,
-        userName: withUser?.name ?? (report as DailyReportWithUser).userName ?? 'Unknown',
+        userName: withUser?.userName ?? (report as DailyReportWithUser).userName ?? 'Unknown',
         userEmail: withUser?.email ?? (report as DailyReportWithUser).userEmail ?? '',
         userRole: withUser?.role ?? (report as DailyReportWithUser).userRole,
         userAvatarUrl: withUser?.avatarUrl ?? (report as DailyReportWithUser).userAvatarUrl,
       };
-      setModalReport(next);
+      setSelectedReportForDetail(next);
       setModalAttachments([]);
       setReviewError('');
       setAttachmentsError('');
       setRejectReason('');
       setRejectModalOpen(false);
       setRejectError('');
+      setDetailPanelOpen(true);
+      
+      // Mark report as seen when viewing (for in_review reports)
+      if (user && report.status === 'in_review') {
+        setReportsLastSeen(user.id, user.role);
+      }
     },
-    [],
+    [user],
   );
 
-  const closeModal = useCallback(() => {
-    setModalReport(null);
+  const closeDetailPanel = useCallback(() => {
+    setDetailPanelOpen(false);
+    setSelectedReportForDetail(null);
     setModalAttachments([]);
     setAttachmentsError('');
     setReviewError('');
@@ -518,6 +623,21 @@ export default function AdminReportsView({ token }: { token: string | null }) {
     setUserReports((prev) =>
       prev.map((report) => (report.id === updated.id ? { ...report, ...updated } : report)),
     );
+    setInReviewReportsWithUser((prev) => {
+      if (updated.status !== 'in_review') {
+        return prev.filter((report) => report.id !== updated.id);
+      }
+      const existing = prev.find((r) => r.id === updated.id);
+      if (existing) {
+        return prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r));
+      }
+      // Need to add user info - try to find it from existing reports
+      const withUserInfo = prev.find((r) => r.userId === updated.userId);
+      if (withUserInfo) {
+        return [...prev, { ...updated, userName: withUserInfo.userName, userEmail: withUserInfo.userEmail }];
+      }
+      return prev;
+    });
     setInReviewReports((prev) => {
       if (updated.status !== 'in_review') {
         return prev.filter((entry) => entry.id !== updated.id);
@@ -534,7 +654,7 @@ export default function AdminReportsView({ token }: { token: string | null }) {
       }
       return prev.map((entry) => (entry.id === updated.id ? nextEntry : entry));
     });
-    setModalReport((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+    setSelectedReportForDetail((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
   }, []);
 
   const openRejectModal = useCallback(() => {
@@ -549,11 +669,11 @@ export default function AdminReportsView({ token }: { token: string | null }) {
   }, []);
 
   const handleAccept = useCallback(async () => {
-    if (!modalReport) return;
+    if (!selectedReportForDetail) return;
     setReviewLoading(true);
     setReviewError('');
     try {
-      const updated = await api<DailyReport>(`/daily-reports/${modalReport.id}/status`, {
+      const updated = await api<DailyReport>(`/daily-reports/${selectedReportForDetail.id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({
           status: 'accepted',
@@ -564,20 +684,21 @@ export default function AdminReportsView({ token }: { token: string | null }) {
       setRejectReason('');
       setRejectModalOpen(false);
       setRejectError('');
-      if (viewMode === 'day' && calendarRange) {
-        void fetchAcceptedByDate(calendarRange);
+      if ((viewMode === 'all' && displayMode === 'day') || viewMode === 'dashboard') {
+        if (calendarRange) {
+          void fetchAcceptedByDate(calendarRange);
+        }
       }
-      triggerNotificationRefresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to update report.';
       setReviewError(message);
     } finally {
       setReviewLoading(false);
     }
-  }, [modalReport, applyUpdatedReport, viewMode, calendarRange, fetchAcceptedByDate]);
+  }, [selectedReportForDetail, applyUpdatedReport, viewMode, displayMode, calendarRange, fetchAcceptedByDate]);
 
   const handleReject = useCallback(async () => {
-    if (!modalReport) return;
+    if (!selectedReportForDetail) return;
     const reason = rejectReason.trim();
     if (!reason) {
       setRejectError('Please add a rejection reason before rejecting.');
@@ -587,7 +708,7 @@ export default function AdminReportsView({ token }: { token: string | null }) {
     setRejectError('');
     setReviewError('');
     try {
-      const updated = await api<DailyReport>(`/daily-reports/${modalReport.id}/status`, {
+      const updated = await api<DailyReport>(`/daily-reports/${selectedReportForDetail.id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({
           status: 'rejected',
@@ -597,21 +718,22 @@ export default function AdminReportsView({ token }: { token: string | null }) {
       applyUpdatedReport(updated);
       setRejectReason('');
       setRejectModalOpen(false);
-      if (viewMode === 'day' && calendarRange) {
-        void fetchAcceptedByDate(calendarRange);
+      if ((viewMode === 'all' && displayMode === 'day') || viewMode === 'dashboard') {
+        if (calendarRange) {
+          void fetchAcceptedByDate(calendarRange);
+        }
       }
-      triggerNotificationRefresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to update report.';
       setRejectError(message);
     } finally {
       setReviewLoading(false);
     }
-  }, [modalReport, rejectReason, applyUpdatedReport, viewMode, calendarRange, fetchAcceptedByDate]);
+  }, [selectedReportForDetail, rejectReason, applyUpdatedReport, viewMode, displayMode, calendarRange, fetchAcceptedByDate]);
 
-  const modalCanReview = modalReport?.status === 'in_review';
+  const canReview = selectedReportForDetail?.status === 'in_review';
 
-  const loadModalAttachments = useCallback(async (reportId: string) => {
+  const loadDetailAttachments = useCallback(async (reportId: string) => {
     setAttachmentsLoading(true);
     setAttachmentsError('');
     try {
@@ -627,23 +749,23 @@ export default function AdminReportsView({ token }: { token: string | null }) {
   }, []);
 
   useEffect(() => {
-    if (!modalReport?.id) {
+    if (!selectedReportForDetail?.id) {
       setModalAttachments([]);
       return;
     }
-    void loadModalAttachments(modalReport.id);
-  }, [modalReport?.id, loadModalAttachments]);
+    void loadDetailAttachments(selectedReportForDetail.id);
+  }, [selectedReportForDetail?.id, loadDetailAttachments]);
 
   const dayCellContent = useCallback(
     (arg: DayCellContentArg) => {
       const dateKey = toDateKey(arg.date);
       const inReviewCount = inReviewByDate.get(dateKey) ?? 0;
       const acceptedCount = acceptedByDate.get(dateKey) ?? 0;
-      const acceptedLabel = `${acceptedCount} report${acceptedCount === 1 ? '' : 's'} accepted`;
-      const inReviewLabel = `${inReviewCount} report${inReviewCount === 1 ? '' : 's'} in review`;
+      const hasAccepted = acceptedCount > 0;
+      const hasInReview = inReviewCount > 0;
       return (
-        <div className="flex w-full flex-col px-1 pt-1 text-[10px] leading-tight">
-          <div className="flex w-full items-start justify-end text-xs font-semibold text-slate-700">
+        <div className="flex w-full flex-col px-1 pt-1 text-sm leading-tight">
+          <div className="flex w-full items-start justify-end text-base font-semibold text-slate-700">
             <span className="relative">
               {arg.dayNumberText}
               {inReviewCount > 0 && (
@@ -651,15 +773,59 @@ export default function AdminReportsView({ token }: { token: string | null }) {
               )}
             </span>
           </div>
-          <div className="mt-1 space-y-0.5">
-            <div className="text-emerald-600">{acceptedLabel}</div>
-            <div className="text-sky-600">{inReviewLabel}</div>
-          </div>
+          {(hasAccepted || hasInReview) && (
+            <div className="mt-1 text-sm">
+              {hasAccepted && (
+                <span className="text-emerald-600">{acceptedCount} accepted</span>
+              )}
+              {hasAccepted && hasInReview && (
+                <span className="text-slate-400 mx-1">,</span>
+              )}
+              {hasInReview && (
+                <span className="text-sky-600">{inReviewCount} in review</span>
+              )}
+            </div>
+          )}
         </div>
       );
     },
     [inReviewByDate, acceptedByDate],
   );
+
+  const dashboardStats = useMemo(() => {
+    // Calculate stats from in-review reports and accepted counts
+    const totalInReview = inReviewReports.length;
+    const totalAccepted = Array.from(acceptedByDate.values()).reduce((sum, count) => sum + count, 0);
+    // For rejected, we'd need to fetch or track separately - for now use inReviewReportsWithUser
+    const totalRejected = inReviewReportsWithUser.filter((r) => r.status === 'rejected').length;
+    const total = totalInReview + totalAccepted + totalRejected;
+    return { total, inReview: totalInReview, accepted: totalAccepted, rejected: totalRejected };
+  }, [inReviewReports, acceptedByDate, inReviewReportsWithUser]);
+
+  const filteredAndSortedInReviewReports = useMemo(() => {
+    let filtered = [...inReviewReportsWithUser];
+    
+    // Filter by user if selected
+    if (selectedUserIdFilter) {
+      filtered = filtered.filter((r) => r.userId === selectedUserIdFilter);
+    }
+    
+    // Sort by date
+    filtered.sort((a, b) => {
+      const comparison = a.reportDate.localeCompare(b.reportDate);
+      return dateSortOrder === 'asc' ? comparison : -comparison;
+    });
+    
+    return filtered;
+  }, [inReviewReportsWithUser, selectedUserIdFilter, dateSortOrder]);
+
+  const handleSortByDate = useCallback(() => {
+    setDateSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+  }, []);
+
+  const handleFilterByUser = useCallback((userId: string) => {
+    setSelectedUserIdFilter((prev) => (prev === userId ? null : userId));
+  }, []);
 
   const calendarEvents = useMemo(() => {
     if (!selectedDate) return [];
@@ -689,31 +855,167 @@ export default function AdminReportsView({ token }: { token: string | null }) {
           float: none;
         }
       `}</style>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Admin review</p>
-            <h1 className="text-3xl font-semibold text-slate-900">Daily report inbox</h1>
-            <p className="text-sm text-slate-600">
-              Review reports by day or scan weekly progress for a specific user.
-            </p>
+      <div className="grid gap-4 min-h-screen xl:grid-cols-[280px_1fr]">
+        <section
+          className="flex flex-col gap-2 bg-[#0b1224] text-slate-100"
+          style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
+        >
+          <div className="p-4 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Reports</p>
+                <h1 className="text-lg font-semibold text-slate-100">Review Center</h1>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <button
+                onClick={() => setViewMode('dashboard')}
+                className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                  viewMode === 'dashboard'
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                }`}
+              >
+                <BarChart3 className="w-5 h-5" />
+                <span>Dashboard</span>
+              </button>
+              <button
+                onClick={() => setViewMode('all')}
+                className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                  viewMode === 'all'
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                }`}
+              >
+                <FileText className="w-5 h-5" />
+                <span>All Reports</span>
+              </button>
+              <button
+                onClick={() => setViewMode('in_review')}
+                className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                  viewMode === 'in_review'
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
+                }`}
+              >
+                <Clock className="w-5 h-5" />
+                <span>In Review Reports</span>
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs uppercase tracking-[0.2em] text-slate-500">View mode</label>
-            <select
-              value={viewMode}
-              onChange={(event) => setViewMode(event.target.value as ViewMode)}
-              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:ring-slate-300"
-            >
-              <option value="day">By day</option>
-              <option value="user">By user</option>
-            </select>
-          </div>
-        </div>
+        </section>
+        <section className="flex-1 px-4 py-6">
+          <div className="space-y-6">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Admin review</p>
+              <h1 className="text-3xl font-semibold text-slate-900">
+                {viewMode === 'dashboard'
+                  ? 'Dashboard'
+                  : viewMode === 'all'
+                    ? 'All Reports'
+                    : 'In Review Reports'}
+              </h1>
+              <p className="text-sm text-slate-600">
+                {viewMode === 'dashboard'
+                  ? 'Overview of all reports and calendar view.'
+                  : viewMode === 'all'
+                    ? 'Review reports by day or scan weekly progress for a specific user.'
+                    : 'Reports pending review with filtering and sorting options.'}
+              </p>
+            </div>
 
-        {viewMode === 'day' ? (
+            {viewMode === 'dashboard' ? (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-xl bg-slate-100 p-2">
+                        <FileText className="w-5 h-5 text-slate-700" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Total</p>
+                        <p className="text-2xl font-semibold text-slate-900">{dashboardStats.total}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-xl bg-sky-100 p-2">
+                        <Clock className="w-5 h-5 text-sky-700" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">In Review</p>
+                        <p className="text-2xl font-semibold text-slate-900">{dashboardStats.inReview}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-xl bg-emerald-100 p-2">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-700" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Accepted</p>
+                        <p className="text-2xl font-semibold text-slate-900">{dashboardStats.accepted}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-xl bg-rose-100 p-2">
+                        <AlertCircle className="w-5 h-5 text-rose-700" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Rejected</p>
+                        <p className="text-2xl font-semibold text-slate-900">{dashboardStats.rejected}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Calendar</p>
+                      <h2 className="text-2xl font-semibold text-slate-900">Monthly view</h2>
+                    </div>
+                    <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+                      {selectedDateLabel}
+                    </div>
+                  </div>
+                  <div className="admin-reports-calendar mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    <FullCalendar
+                      plugins={[dayGridPlugin, interactionPlugin]}
+                      initialView="dayGridMonth"
+                      headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
+                      height={650}
+                      showNonCurrentDates
+                      fixedWeekCount={false}
+                      nowIndicator
+                      events={calendarEvents}
+                      dayCellContent={dayCellContent}
+                      dateClick={handleDateClick}
+                      eventClick={handleEventClick}
+                      datesSet={handleDatesSet}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : viewMode === 'all' ? (
+              <>
+                <div className="flex items-center justify-end gap-2 mb-4">
+                  <label className="text-sm text-slate-600">Display mode:</label>
+                  <select
+                    value={displayMode}
+                    onChange={(e) => setDisplayMode(e.target.value as DisplayMode)}
+                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300 transition"
+                  >
+                    <option value="day">By Day</option>
+                    <option value="user">By User</option>
+                  </select>
+                </div>
+                {displayMode === 'day' ? (
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Calendar</p>
@@ -728,7 +1030,7 @@ export default function AdminReportsView({ token }: { token: string | null }) {
                   plugins={[dayGridPlugin, interactionPlugin]}
                   initialView="dayGridMonth"
                   headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
-                  height={560}
+                  height={650}
                   showNonCurrentDates
                   fixedWeekCount={false}
                   nowIndicator
@@ -741,13 +1043,17 @@ export default function AdminReportsView({ token }: { token: string | null }) {
               </div>
             </section>
 
-            <aside className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <aside className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Reports</p>
+                  <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                    <FileText className="w-3.5 h-3.5" />
+                    Reports
+                  </p>
                   <h2 className="text-2xl font-semibold text-slate-900">{selectedDateLabel}</h2>
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <Calendar className="w-3.5 h-3.5" />
                   {visibleDateReports.length} report{visibleDateReports.length === 1 ? '' : 's'}
                 </div>
               </div>
@@ -772,8 +1078,8 @@ export default function AdminReportsView({ token }: { token: string | null }) {
                     <button
                       key={report.id}
                       type="button"
-                      onClick={() => openModalForReport(report)}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                      onClick={() => openDetailPanel(report)}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:shadow-md"
                     >
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -797,15 +1103,19 @@ export default function AdminReportsView({ token }: { token: string | null }) {
               </div>
             </aside>
           </div>
-        ) : (
+                ) : (
           <div className="grid gap-6 lg:grid-cols-[0.7fr_1.3fr]">
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <section className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Users</p>
+                  <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                    <Users className="w-3.5 h-3.5" />
+                    Users
+                  </p>
                   <h2 className="text-2xl font-semibold text-slate-900">All active members</h2>
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <Users className="w-3.5 h-3.5" />
                   {users.length} user{users.length === 1 ? '' : 's'}
                 </div>
               </div>
@@ -836,16 +1146,16 @@ export default function AdminReportsView({ token }: { token: string | null }) {
                         onClick={() => setSelectedUserId(member.id)}
                         className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-3 py-3 text-left transition ${
                           active
-                            ? 'border-slate-300 bg-slate-100'
-                            : 'border-slate-200 bg-white hover:bg-slate-50'
+                            ? 'border-slate-300 bg-slate-100 shadow-sm'
+                            : 'border-slate-200 bg-white shadow-sm hover:bg-slate-50 hover:shadow-md'
                         }`}
                       >
                         <div className="flex items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
-                            {initialsFor(member.name)}
+                            {initialsFor(member.userName)}
                           </div>
                           <div>
-                            <div className="text-sm font-semibold text-slate-900">{member.name}</div>
+                            <div className="text-sm font-semibold text-slate-900">{member.userName}</div>
                             <div className="text-xs text-slate-600">{member.email}</div>
                           </div>
                         </div>
@@ -857,12 +1167,12 @@ export default function AdminReportsView({ token }: { token: string | null }) {
               </div>
             </section>
 
-            <aside className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <aside className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Weekly report</p>
                   <h2 className="text-2xl font-semibold text-slate-900">
-                    {selectedUser?.name ?? 'Select a user'}
+                    {selectedUser?.userName ?? 'Select a user'}
                   </h2>
                   <p className="text-sm text-slate-600">{formatWeekRangeLabel(weekStart)}</p>
                 </div>
@@ -870,23 +1180,26 @@ export default function AdminReportsView({ token }: { token: string | null }) {
                   <button
                     type="button"
                     onClick={() => setWeekStart((prev) => shiftDate(prev, -7))}
-                    className="rounded-full border border-slate-200 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
+                    className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
                   >
+                    <ChevronLeft className="w-3.5 h-3.5" />
                     Prev week
                   </button>
                   <button
                     type="button"
                     onClick={() => setWeekStart(startOfWeek(toDateKey(new Date())))}
-                    className="rounded-full border border-slate-200 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
+                    className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
                   >
+                    <Calendar className="w-3.5 h-3.5" />
                     This week
                   </button>
                   <button
                     type="button"
                     onClick={() => setWeekStart((prev) => shiftDate(prev, 7))}
-                    className="rounded-full border border-slate-200 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
+                    className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
                   >
                     Next week
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -910,12 +1223,12 @@ export default function AdminReportsView({ token }: { token: string | null }) {
                         key={dateKey}
                         type="button"
                         onClick={() =>
-                          report ? openModalForReport(report, selectedUser) : undefined
+                          report ? openDetailPanel(report, selectedUser) : undefined
                         }
                         disabled={!report}
                         className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
                           report
-                            ? 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                            ? 'border-slate-200 bg-white shadow-sm hover:border-slate-300 hover:bg-slate-50 hover:shadow-md'
                             : 'border-dashed border-slate-200 bg-slate-50 text-slate-500'
                         }`}
                       >
@@ -949,132 +1262,227 @@ export default function AdminReportsView({ token }: { token: string | null }) {
               </div>
             </aside>
           </div>
-        )}
-      </div>
-
-      {modalReport ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-10">
-          <div className="absolute inset-0 bg-slate-900/40" onClick={closeModal} />
-          <div className="relative w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-xl">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Report</p>
-                <h3 className="text-2xl font-semibold text-slate-900">
-                  {formatDateLabel(modalReport.reportDate, {
-                    weekday: 'long',
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                </h3>
-                <div className="mt-2 text-sm text-slate-600">
-                  {modalReport.userName} - {modalReport.userEmail || 'No email'}
-                </div>
-              </div>
-              <span
-                className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${STATUS_CONFIG[modalReport.status].chip}`}
-              >
-                {STATUS_CONFIG[modalReport.status].label}
-              </span>
-            </div>
-
-            <div className="mt-4 max-h-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap">
-              {modalReport.content?.trim() || 'No report content.'}
-            </div>
-
-            {modalReport.status === 'rejected' && modalReport.reviewReason ? (
-              <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-rose-500">
-                  Rejection reason
-                </div>
-                <div className="mt-2 whitespace-pre-wrap">{modalReport.reviewReason}</div>
-              </div>
-            ) : null}
-
-            <div className="mt-4">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Attachments</div>
-              {attachmentsError ? (
-                <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                  {attachmentsError}
-                </div>
-              ) : null}
-              <div className="mt-2 space-y-2">
-                {attachmentsLoading ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                    Loading attachments...
+                )}
+              </>
+            ) : (
+              <div className="rounded-3xl border border-slate-200/70 bg-white shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm overflow-hidden">
+                {inReviewLoading ? (
+                  <div className="flex items-center justify-center p-10">
+                    <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300 border-t-sky-500" />
                   </div>
-                ) : modalAttachments.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                    No attachments.
+                ) : inReviewError ? (
+                  <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50 text-sm text-rose-700">
+                    {inReviewError}
                   </div>
+                ) : filteredAndSortedInReviewReports.length === 0 ? (
+                  <div className="p-10 text-center text-sm text-slate-500">No in-review reports found.</div>
                 ) : (
-                  modalAttachments.map((attachment) => (
-                    <a
-                      key={attachment.id}
-                      href={attachment.fileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
-                    >
-                      <span className="truncate">{attachment.fileName}</span>
-                      <span className="text-xs text-slate-400">
-                        {(attachment.fileSize / 1024).toFixed(1)} KB
-                      </span>
-                    </a>
-                  ))
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+                            No
+                          </th>
+                          <th
+                            className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600 cursor-pointer hover:bg-slate-100 transition"
+                            onClick={handleSortByDate}
+                          >
+                            Date {dateSortOrder === 'asc' ? '↑' : '↓'}
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+                            User
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {filteredAndSortedInReviewReports.map((report, index) => (
+                          <tr
+                            key={report.id}
+                            onClick={() => openDetailPanel(report)}
+                            className="hover:bg-slate-50 transition-colors cursor-pointer"
+                          >
+                            <td className="px-4 py-3 text-sm text-slate-900">{index + 1}</td>
+                            <td className="px-4 py-3 text-sm text-slate-900">{formatShortDate(report.reportDate)}</td>
+                            <td
+                              className="px-4 py-3 text-sm text-slate-900"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleFilterByUser(report.userId);
+                              }}
+                            >
+                              <span className="hover:underline">{report.userName}</span>
+                              {selectedUserIdFilter === report.userId && (
+                                <span className="ml-2 text-xs text-slate-500">(filtered)</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
-            </div>
-
-            {reviewError ? (
-              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {reviewError}
-              </div>
-            ) : null}
-
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs text-slate-500">
-                Status: {STATUS_CONFIG[modalReport.status].label}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="rounded-full border border-slate-200 px-4 py-2 text-xs text-slate-700 hover:bg-slate-100"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={openRejectModal}
-                  disabled={!modalCanReview || reviewLoading}
-                  className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {reviewLoading ? 'Updating...' : 'Reject'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAccept}
-                  disabled={!modalCanReview || reviewLoading}
-                  className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {reviewLoading ? 'Updating...' : 'Accept'}
-                </button>
-              </div>
-            </div>
-            {!modalCanReview ? (
-              <div className="mt-3 text-xs text-slate-500">
-                Only in-review reports can be reviewed.
-              </div>
-            ) : null}
+            )}
           </div>
-        </div>
+        </section>
+      </div>
+
+      {detailPanelOpen && selectedReportForDetail ? (
+        <>
+          <div
+            className="fixed inset-0 top-[57px] z-30 bg-slate-900/40"
+            onClick={closeDetailPanel}
+          />
+          <div
+            className={`fixed top-[57px] right-0 z-40 h-[calc(100vh-57px)] w-full max-w-2xl transform border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 ${
+              detailPanelOpen ? 'translate-x-0' : 'translate-x-full'
+            }`}
+          >
+            <div className="flex h-full flex-col overflow-y-auto">
+              <section className="p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Report details</p>
+                    <h2 className="text-lg font-semibold text-slate-900 mt-1">
+                      {formatDateLabel(selectedReportForDetail.reportDate, {
+                        weekday: 'long',
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </h2>
+                    <div className="mt-2 text-sm text-slate-600">
+                      {selectedReportForDetail.userName} - {selectedReportForDetail.userEmail || 'No email'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${STATUS_CONFIG[selectedReportForDetail.status].chip}`}
+                    >
+                      {STATUS_CONFIG[selectedReportForDetail.status].label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={closeDetailPanel}
+                      className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition"
+                      title="Close"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {selectedReportForDetail.status === 'rejected' && selectedReportForDetail.reviewReason ? (
+                  <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-rose-500">Rejection reason</div>
+                    <div className="mt-2 whitespace-pre-wrap">{selectedReportForDetail.reviewReason}</div>
+                  </div>
+                ) : null}
+
+                <div className="mb-4">
+                  <label className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-2">
+                    <FileText className="w-3.5 h-3.5" />
+                    Daily report
+                  </label>
+                  <div className="max-h-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap">
+                    {selectedReportForDetail.content?.trim() || 'No report content.'}
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-2">
+                    <FileText className="w-3.5 h-3.5" />
+                    Attachments
+                  </div>
+                  {attachmentsError ? (
+                    <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                      {attachmentsError}
+                    </div>
+                  ) : null}
+                  <div className="mt-2 space-y-2">
+                    {attachmentsLoading ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                        Loading attachments...
+                      </div>
+                    ) : modalAttachments.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                        No attachments.
+                      </div>
+                    ) : (
+                      modalAttachments.map((attachment) => (
+                        <a
+                          key={attachment.id}
+                          href={attachment.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                        >
+                          <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                          <span className="truncate flex-1">{attachment.fileName}</span>
+                          <span className="text-xs text-slate-400 flex-shrink-0">
+                            {(attachment.fileSize / 1024).toFixed(1)} KB
+                          </span>
+                          <Download className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        </a>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {reviewError ? (
+                  <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {reviewError}
+                  </div>
+                ) : null}
+
+                <div className="mb-4 text-xs text-slate-500">
+                  {selectedReportForDetail.submittedAt
+                    ? `Submitted: ${new Intl.DateTimeFormat('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      }).format(new Date(selectedReportForDetail.submittedAt))}`
+                    : 'Not submitted'}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={openRejectModal}
+                    disabled={!canReview || reviewLoading}
+                    className="flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    {reviewLoading ? 'Updating...' : 'Reject'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAccept}
+                    disabled={!canReview || reviewLoading}
+                    className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    {reviewLoading ? 'Updating...' : 'Accept'}
+                  </button>
+                </div>
+                {!canReview ? (
+                  <div className="mt-3 text-xs text-slate-500">
+                    Only in-review reports can be reviewed.
+                  </div>
+                ) : null}
+              </section>
+            </div>
+          </div>
+        </>
       ) : null}
 
-      {rejectModalOpen ? (
+
+      {rejectModalOpen && selectedReportForDetail ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-10">
           <div className="absolute inset-0 bg-slate-900/50" onClick={closeRejectModal} />
-          <div className="relative w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl">
+          <div className="relative w-full max-w-lg rounded-3xl border border-slate-200/70 bg-white p-6 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] backdrop-blur-sm">
             <div>
               <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Reject report</p>
               <h3 className="text-xl font-semibold text-slate-900">Add a rejection reason</h3>
@@ -1099,16 +1507,18 @@ export default function AdminReportsView({ token }: { token: string | null }) {
               <button
                 type="button"
                 onClick={closeRejectModal}
-                className="rounded-full border border-slate-200 px-4 py-2 text-xs text-slate-700 hover:bg-slate-100"
+                className="flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs text-slate-700 hover:bg-slate-100"
               >
+                <XCircle className="w-3.5 h-3.5 text-slate-600" />
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleReject}
                 disabled={reviewLoading}
-                className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
+                <X className="w-3.5 h-3.5" />
                 {reviewLoading ? 'Rejecting...' : 'Reject report'}
               </button>
             </div>

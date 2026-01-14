@@ -27,9 +27,9 @@ export default function AdminReportsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-white text-slate-900">
+    <main className="min-h-screen bg-gradient-to-b from-[#f4f8ff] via-[#eef2ff] to-white text-slate-900">
       <TopNav />
-      <div className="mx-auto w-full max-w-screen-2xl px-4 py-6">
+      <div className="mx-auto w-full min-h-screen pt-[57px]">
         <AdminReportsView token={token} />
       </div>
     </main>
