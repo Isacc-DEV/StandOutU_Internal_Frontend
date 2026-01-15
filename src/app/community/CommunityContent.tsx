@@ -85,7 +85,7 @@ export function CommunityContent() {
   const channelList = useMemo(() => sortChannels(channels), [channels]);
   const memberList = useMemo(() => {
     const filtered = directory.filter((member) => member.id !== user?.id);
-    return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+    return [...filtered].sort((a, b) => a.userName.localeCompare(b.userName));
   }, [directory, user?.id]);
 
   const currentTyping = useMemo(() => {
