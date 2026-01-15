@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Radio, Keyboard, X, Play, RefreshCw, Download, Sparkles, MessageCircle, Send, Briefcase } from "lucide-react";
+import { FileText, Radio, Keyboard, X, Play, RefreshCw, Download, Sparkles, MessageCircle, Send, Briefcase, ChevronLeft, ChevronRight } from "lucide-react";
 import TopNav from "../../components/TopNav";
 import { API_BASE } from "@/lib/api";
 
@@ -290,6 +290,10 @@ export default function Page() {
     }
   }, []);
   const [isClient, setIsClient] = useState(false);
+  const [navigationStarted, setNavigationStarted] = useState(false);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
+  const [loadedUrl, setLoadedUrl] = useState<string>("");
   const router = useRouter();
   const showError = useCallback((message: string) => {
     if (!message) return;
@@ -298,7 +302,7 @@ export default function Page() {
     }
   }, []);
   const isBidder = user?.role === "BIDDER";
-  const browserSrc = session?.url || url || "";
+  const browserSrc = navigationStarted ? (session?.url || loadedUrl || "") : "";
   const webviewPartition = "persist:smartwork-jobview";
 
   useEffect(() => {
@@ -499,6 +503,10 @@ export default function Page() {
     setStreamFrame("");
     setStreamConnected(false);
     setCheckEnabled(false);
+    setNavigationStarted(false);
+    setCanGoBack(false);
+    setCanGoForward(false);
+    setLoadedUrl("");
     const base = profiles.find((p) => p.id === selectedProfileId)?.baseInfo;
     setBaseInfoView(cleanBaseInfo(base ?? {}));
     setShowBaseInfo(false);
@@ -576,7 +584,13 @@ export default function Page() {
   useEffect(() => {
     setWebviewStatus("idle");
     setCheckEnabled(false);
-  }, [url]);
+    // Reset navigation state if URL changes after navigation started
+    if (navigationStarted && url !== loadedUrl && url !== session?.url) {
+      setNavigationStarted(false);
+      setCanGoBack(false);
+      setCanGoForward(false);
+    }
+  }, [url, navigationStarted, loadedUrl, session?.url]);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -587,17 +601,42 @@ export default function Page() {
   useEffect(() => {
     if (!isElectron || !webviewRef.current || !browserSrc) return;
     const view = webviewRef.current;
+    const checkNavigationState = () => {
+      // Try Electron webview API methods first
+      if (typeof (view as any).canGoBack === "function") {
+        setCanGoBack((view as any).canGoBack());
+      } else {
+        setCanGoBack(false);
+      }
+      if (typeof (view as any).canGoForward === "function") {
+        setCanGoForward((view as any).canGoForward());
+      } else {
+        setCanGoForward(false);
+      }
+      // Also try checking via JavaScript as fallback
+      view.executeJavaScript("window.history.length > 1", true).then((result) => {
+        if (typeof result === "number" && result > 1) {
+          // Check if we can go back by trying to access history state
+          view.executeJavaScript("window.history.state !== null", true).then((canBack) => {
+            setCanGoBack(Boolean(canBack));
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    };
     const handleReady = () => {
       setWebviewStatus("ready");
       setCheckEnabled(true);
+      checkNavigationState();
     };
     const handleDomReady = () => {
       setWebviewStatus("ready");
       setCheckEnabled(true);
+      checkNavigationState();
     };
     const handleStop = () => {
       setWebviewStatus("ready");
       setCheckEnabled(true);
+      checkNavigationState();
     };
     const handleFail = () => {
       setWebviewStatus("failed");
@@ -606,6 +645,9 @@ export default function Page() {
     const handleStart = () => {
       setWebviewStatus("loading");
       setCheckEnabled(false);
+    };
+    const handleNavigate = () => {
+      checkNavigationState();
     };
     const handleNewWindow = (event: Event) => {
       const popup = event as Event & { url?: string; preventDefault?: () => void };
@@ -624,6 +666,8 @@ export default function Page() {
     view.addEventListener("did-finish-load", handleReady);
     view.addEventListener("did-fail-load", handleFail);
     view.addEventListener("did-start-loading", handleStart);
+    view.addEventListener("did-navigate", handleNavigate);
+    view.addEventListener("did-navigate-in-page", handleNavigate);
     view.addEventListener("new-window", handleNewWindow);
     return () => {
       view.removeEventListener("dom-ready", handleDomReady);
@@ -631,6 +675,8 @@ export default function Page() {
       view.removeEventListener("did-finish-load", handleReady);
       view.removeEventListener("did-fail-load", handleFail);
       view.removeEventListener("did-start-loading", handleStart);
+      view.removeEventListener("did-navigate", handleNavigate);
+      view.removeEventListener("did-navigate-in-page", handleNavigate);
       view.removeEventListener("new-window", handleNewWindow);
     };
   }, [isElectron, browserSrc]);
@@ -965,6 +1011,8 @@ export default function Page() {
     if (!user || !selectedProfileId || !url) return;
     setLoadingAction("go");
     setCheckEnabled(false);
+    setNavigationStarted(true);
+    setLoadedUrl(url);
     try {
       const newSession: ApplicationSession = await withTimeout(
         api("/sessions", {
@@ -999,6 +1047,72 @@ export default function Page() {
       setLoadingAction("");
     }
   }
+
+  const handleGoBack = useCallback(() => {
+    if (!canGoBack) return;
+    const view = webviewRef.current;
+    if (isElectron && view) {
+      if (typeof (view as any).goBack === "function") {
+        (view as any).goBack();
+      } else {
+        view.executeJavaScript("window.history.back()", true).catch(console.error);
+      }
+      // Update navigation state after a short delay
+      setTimeout(() => {
+        if (typeof (view as any).canGoBack === "function") {
+          setCanGoBack((view as any).canGoBack());
+        }
+        if (typeof (view as any).canGoForward === "function") {
+          setCanGoForward((view as any).canGoForward());
+        }
+      }, 100);
+    } else if (!isElectron && typeof window !== "undefined") {
+      // For iframe, we can't directly control history due to cross-origin restrictions
+      // But we can try
+      const iframe = document.querySelector("iframe");
+      if (iframe?.contentWindow) {
+        try {
+          iframe.contentWindow.history.back();
+        } catch {
+          // Cross-origin restrictions may prevent this
+          console.warn("Cannot navigate iframe history due to cross-origin restrictions");
+        }
+      }
+    }
+  }, [canGoBack, isElectron]);
+
+  const handleGoForward = useCallback(() => {
+    if (!canGoForward) return;
+    const view = webviewRef.current;
+    if (isElectron && view) {
+      if (typeof (view as any).goForward === "function") {
+        (view as any).goForward();
+      } else {
+        view.executeJavaScript("window.history.forward()", true).catch(console.error);
+      }
+      // Update navigation state after a short delay
+      setTimeout(() => {
+        if (typeof (view as any).canGoBack === "function") {
+          setCanGoBack((view as any).canGoBack());
+        }
+        if (typeof (view as any).canGoForward === "function") {
+          setCanGoForward((view as any).canGoForward());
+        }
+      }, 100);
+    } else if (!isElectron && typeof window !== "undefined") {
+      // For iframe, we can't directly control history due to cross-origin restrictions
+      // But we can try
+      const iframe = document.querySelector("iframe");
+      if (iframe?.contentWindow) {
+        try {
+          iframe.contentWindow.history.forward();
+        } catch {
+          // Cross-origin restrictions may prevent this
+          console.warn("Cannot navigate iframe history due to cross-origin restrictions");
+        }
+      }
+    }
+  }, [canGoForward, isElectron]);
 
   async function handleCheck() {
     if (!session) return;
@@ -1937,20 +2051,41 @@ export default function Page() {
                         />
                       </div>
                       <div className="flex gap-2 sm:flex-shrink-0">
-                        <button
-                          onClick={handleGo}
-                          disabled={loadingAction === "go" || !selectedProfileId}
-                          className="min-w-[100px] rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-indigo-600"
-                        >
-                          {loadingAction === "go" ? (
-                            <span className="flex items-center justify-center gap-2">
-                              <RefreshCw className="h-4 w-4 animate-spin" />
-                              Connecting...
-                            </span>
-                          ) : (
-                            "Go"
-                          )}
-                        </button>
+                        {!navigationStarted ? (
+                          <button
+                            onClick={handleGo}
+                            disabled={loadingAction === "go" || !selectedProfileId}
+                            className="min-w-[100px] rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-indigo-600"
+                          >
+                            {loadingAction === "go" ? (
+                              <span className="flex items-center justify-center gap-2">
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                Connecting...
+                              </span>
+                            ) : (
+                              "Go"
+                            )}
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={handleGoBack}
+                              disabled={!canGoBack}
+                              className="min-w-[50px] rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
+                              title="Go back"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={handleGoForward}
+                              disabled={!canGoForward}
+                              className="min-w-[50px] rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
+                              title="Go forward"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={handleCheck}
                           disabled={!canCheck}

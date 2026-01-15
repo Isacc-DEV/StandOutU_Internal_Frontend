@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import FullCalendar from '@fullcalendar/react';
 import { DatesSetArg, EventClickArg, EventContentArg } from '@fullcalendar/core';
@@ -190,7 +190,7 @@ const uniqueMailboxes = (mailboxes: string[]) => {
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
-export default function CalendarPage() {
+function CalendarPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token, loading } = useAuth();
@@ -1137,6 +1137,20 @@ export default function CalendarPage() {
         </>
       ) : null}
     </main>
+  );
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-white text-slate-900">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300 border-t-sky-500" />
+        </div>
+      </main>
+    }>
+      <CalendarPageContent />
+    </Suspense>
   );
 }
 
