@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Minus, Check } from "lucide-react";
+import { Plus, X, Minus, Check, Users } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth } from "../../../lib/useAuth";
 import ManagerShell from "../../../components/ManagerShell";
@@ -151,12 +151,26 @@ export default function ManagerBiddersPage() {
 
   return (
     <ManagerShell>
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
+        <header className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20">
+              <Users className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-600">
+                Manager
+              </p>
+              <h1 className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
+                Bidder roster
+              </h1>
+            </div>
+          </div>
+          <p className="max-w-2xl text-base leading-relaxed text-slate-600">
+            Track bidder assignments pulled from the database.
+          </p>
+        </header>
       <div className="space-y-6">
-        <div className="space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Manager</p>
-          <h1 className="text-3xl font-semibold text-slate-900">Bidder roster</h1>
-          <p className="text-sm text-slate-600">Track bidder assignments pulled from the database.</p>
-        </div>
 
         {error && (
           <div className="rounded-xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm text-red-100">
@@ -384,6 +398,7 @@ export default function ManagerBiddersPage() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </ManagerShell>
   );

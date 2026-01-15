@@ -15,7 +15,7 @@ export default function ManagerShell({ children }: { children: React.ReactNode }
   ];
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#f4f8ff] via-[#eef2ff] to-white text-slate-900">
+    <main className="min-h-screen bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-white text-slate-900">
       <TopNav />
       <div className="mx-auto w-full min-h-screen pt-[57px]">
         <div className="grid gap-4 min-h-screen xl:grid-cols-[280px_1fr]">

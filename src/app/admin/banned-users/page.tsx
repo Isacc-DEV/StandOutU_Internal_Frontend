@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, Check, X } from "lucide-react";
+import { Trash2, Check, X, ShieldX } from "lucide-react";
 import { api } from "../../../lib/api";
 import { ClientUser } from "../../../lib/auth";
 import { useAuth } from "../../../lib/useAuth";
@@ -75,12 +75,26 @@ export default function BannedUsersPage() {
 
   return (
     <AdminShell>
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
+        <header className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 shadow-lg shadow-red-500/20">
+              <ShieldX className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600">
+                Admin
+              </p>
+              <h1 className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
+                Banned users
+              </h1>
+            </div>
+          </div>
+          <p className="max-w-2xl text-base leading-relaxed text-slate-600">
+            Manage banned user accounts. Approve to restore access or delete permanently.
+          </p>
+        </header>
       <div className="space-y-6">
-        <div className="space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Admin</p>
-          <h1 className="text-3xl font-semibold text-slate-900">Banned users</h1>
-          <p className="text-sm text-slate-600">Manage banned user accounts. Approve to restore access or delete permanently.</p>
-        </div>
 
         {error && (
           <div className="rounded-xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm text-red-100">
@@ -127,6 +141,7 @@ export default function BannedUsersPage() {
             )}
           </div>
         </div>
+      </div>
 
         {confirmOpen && pendingAction && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">

@@ -908,7 +908,7 @@ export default function TasksPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-[#f4f8ff] via-[#eef2ff] to-white text-slate-900">
+      <main className="min-h-screen bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-white text-slate-900">
         <TopNav />
         <div className="mx-auto max-w-4xl px-6 py-12">
           <div className="rounded-3xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
@@ -920,7 +920,7 @@ export default function TasksPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#f4f8ff] via-[#eef2ff] to-white text-slate-900">
+    <main className="min-h-screen bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-white text-slate-900">
       <TopNav />
       <div className="mx-auto w-full min-h-screen pt-[57px]">
         {tasksError ? (
@@ -1065,20 +1065,29 @@ export default function TasksPage() {
             </div>
           </section>
           <div className="flex flex-col gap-6 px-4 py-8">
-            <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Tasks</p>
-              <h1 className="text-3xl font-semibold text-slate-900">
-                {sidebarView === 'dashboard' && 'Task command center'}
-                {sidebarView === 'mine' && 'My Tasks'}
-                {sidebarView === 'all' && 'All Tasks'}
-                {sidebarView === 'todo' && 'To Do Tasks'}
-                {sidebarView === 'in_progress' && 'In Progress Tasks'}
-                {sidebarView === 'in_review' && 'In Review Tasks'}
-                {sidebarView === 'done' && 'Completed Tasks'}
-                {sidebarView === 'done_requests' && 'Done Requests'}
-                {sidebarView === 'assign_requests' && 'Assign Requests'}
-              </h1>
-              <p className="max-w-2xl text-sm text-slate-600">
+            <header className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 shadow-lg shadow-purple-500/20">
+                  <Target className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-purple-600">
+                    Tasks
+                  </p>
+                  <h1 className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
+                    {sidebarView === 'dashboard' && 'Task command center'}
+                    {sidebarView === 'mine' && 'My Tasks'}
+                    {sidebarView === 'all' && 'All Tasks'}
+                    {sidebarView === 'todo' && 'To Do Tasks'}
+                    {sidebarView === 'in_progress' && 'In Progress Tasks'}
+                    {sidebarView === 'in_review' && 'In Review Tasks'}
+                    {sidebarView === 'done' && 'Completed Tasks'}
+                    {sidebarView === 'done_requests' && 'Done Requests'}
+                    {sidebarView === 'assign_requests' && 'Assign Requests'}
+                  </h1>
+                </div>
+              </div>
+              <p className="max-w-2xl text-base leading-relaxed text-slate-600">
                 {sidebarView === 'dashboard' && 'Track onboarding, review queues, and follow-ups across your active profiles.'}
                 {sidebarView === 'mine' && 'Tasks assigned to you across all statuses.'}
                 {sidebarView === 'all' && 'All tasks across all statuses.'}
@@ -1089,7 +1098,7 @@ export default function TasksPage() {
                 {sidebarView === 'done_requests' && 'Review requests to mark tasks as done.'}
                 {sidebarView === 'assign_requests' && 'Review requests to assign users to tasks.'}
               </p>
-            </div>
+            </header>
 
             {sidebarView === 'dashboard' && (
               <section className="space-y-6">

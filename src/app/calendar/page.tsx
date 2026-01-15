@@ -726,7 +726,7 @@ export default function CalendarPage() {
   }, [colorPickerOpen]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#f4f8ff] via-[#eef2ff] to-white text-slate-900">
+    <main className="min-h-screen bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-white text-slate-900">
       <TopNav />
       <div className="mx-auto w-full min-h-screen pt-[57px]">
         <div className="grid gap-4 min-h-[calc(100vh-57px)] xl:grid-cols-[280px_1fr]">
@@ -933,17 +933,26 @@ export default function CalendarPage() {
             </div>
           </section>
           <section className="flex-1 px-4 py-6">
-            <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Upcoming events</p>
-                  <h2 className="text-2xl font-semibold text-slate-900">Calendar</h2>
-                  <p className="text-sm text-slate-600">
-                    We refresh on focus and every few minutes. Switch to webhooks when ready.
-                  </p>
+            <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
+              <header className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/20">
+                    <Calendar className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+                      Upcoming Events
+                    </p>
+                    <h1 className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
+                      Calendar
+                    </h1>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
+              </header>
+              <div className="rounded-3xl border border-slate-200/70 bg-white p-5 shadow-[0_18px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur-sm">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
                     onClick={handleSyncMailboxes}
                     disabled={!viewRange || eventsLoading}
                     className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60 transition"
@@ -1014,6 +1023,7 @@ export default function CalendarPage() {
                     handleViewChange(viewInfo.view.type);
                   }}
                 />
+              </div>
               </div>
             </div>
           </section>

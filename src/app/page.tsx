@@ -3,6 +3,7 @@ import Link from "next/link";
 import TopNav from "../components/TopNav";
 import { FileText, Sparkles, LayoutDashboard, Link2, Users, Calendar, Target, Eye, Heart, Mail, MessageCircle, Phone, Linkedin } from "lucide-react";
 import { useState, useEffect } from "react";
+import { handleError } from "../lib/errorHandler";
 
 const features = [
   {
@@ -158,10 +159,26 @@ export default function Page() {
         </section>
 
         {/* About Us Section */}
-        <section id="about" className="relative border-t border-white/5 bg-[#0b1224] py-24">
+        <section id="about" className="relative border-t border-white/5 bg-[#0b1224]">
           {/* Hero Section */}
           <div className="relative overflow-hidden border-b border-white/5">
-            <div className="mx-auto max-w-screen-2xl px-4 py-24 sm:py-32">
+            {/* Background Image */}
+            <div className=" inset-0 z-0 w-full h-auto">
+              <img
+                src="/images/hero-background4.png"
+                alt="Hero background"
+                className="inset-0 w-full h-auto object-cover"
+                style={{
+                  backgroundImage: 'url(/images/hero-background4.png)',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }}
+              />
+              {/* Overlay for better text readability */}
+              <div className="absolute inset-0 bg-[#0b1224]/70 z-10" />
+            </div>
+            <div className="absolute inset-0 z-30 mx-auto max-w-screen-2xl px-4 py-24 sm:py-32 min-h-[400px] flex items-center justify-center w-full">
               <div className="flex flex-col items-center text-center">
                 <div className="space-y-6">
                   <h1 className="text-5xl font-bold leading-tight tracking-tight sm:text-6xl md:text-7xl">
@@ -491,11 +508,16 @@ export default function Page() {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     setFormStatus('submitting');
-                    // Simulate form submission - replace with actual API call
-                    await new Promise((resolve) => setTimeout(resolve, 1000));
-                    setFormStatus('success');
-                    setFormData({ name: '', email: '', subject: '', message: '' });
-                    setTimeout(() => setFormStatus('idle'), 3000);
+                    try {
+                      // Simulate form submission - replace with actual API call
+                      await new Promise((resolve) => setTimeout(resolve, 1000));
+                      setFormStatus('success');
+                      setFormData({ name: '', email: '', subject: '', message: '' });
+                      setTimeout(() => setFormStatus('idle'), 3000);
+                    } catch (err) {
+                      setFormStatus('idle');
+                      handleError(err, 'An error occurred while sending your message. Please contact the administrator.');
+                    }
                   }}
                   className="flex-1 space-y-6 rounded-2xl border border-white/10 bg-[#111a32] p-8 shadow-xl"
                 >
@@ -564,16 +586,6 @@ export default function Page() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         <span>Thank you! Your message has been sent successfully. We'll get back to you soon.</span>
-                      </div>
-                    </div>
-                  )}
-                  {formStatus === 'error' && (
-                    <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-                      <div className="flex items-center gap-2">
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        <span>Something went wrong. Please try again later.</span>
                       </div>
                     </div>
                   )}

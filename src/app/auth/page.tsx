@@ -45,7 +45,7 @@ export default function AuthPage() {
       const { user, token } = res as { user: ClientUser; token?: string };
       if (user && token) {
         saveAuth(user, token);
-        router.replace("/workspace");
+        router.replace("/");
       }
     } catch (err) {
       console.error(err);

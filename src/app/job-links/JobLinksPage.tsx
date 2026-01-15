@@ -8,9 +8,9 @@ import { useAuth } from "../../lib/useAuth";
 import { fetchCountries, fetchJobLinks } from "./api";
 import JobLinksFilters from "./components/JobLinksFilters";
 import JobLinksList from "./components/JobLinksList";
-import JobLinksErrorState from "./components/JobLinksErrorState";
 import type { Country, DateRangeKey, JobLink } from "./types";
 import { buildSinceIso, useDebouncedValue } from "./utils";
+import { handleError } from "../../lib/errorHandler";
 
 const DEFAULT_RANGE: DateRangeKey = "7d";
 const DEFAULT_LIMIT = 50;
@@ -27,8 +27,6 @@ export default function JobLinksPage() {
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
   const [loadingLinks, setLoadingLinks] = useState(false);
-  const [error, setError] = useState("");
-  const [countriesError, setCountriesError] = useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
 
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -66,12 +64,9 @@ export default function JobLinksPage() {
         const result = await fetchCountries(token);
         if (!active) return;
         setCountries(result);
-        setCountriesError("");
       } catch (err) {
         if (!active) return;
-        const message =
-          err instanceof Error ? err.message : "Unable to load countries.";
-        setCountriesError(message);
+        handleError(err, 'An error occurred while loading countries. Please contact the administrator.');
       }
     };
     void loadCountries();
@@ -87,7 +82,6 @@ export default function JobLinksPage() {
   const loadLinks = useCallback(async () => {
     if (!token || user?.role === "OBSERVER") return;
     setLoadingLinks(true);
-    setError("");
     try {
       const response = await fetchJobLinks(
         {
@@ -103,9 +97,7 @@ export default function JobLinksPage() {
       setTotal(typeof response.total === "number" ? response.total : 0);
       setLastUpdatedAt(new Date());
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unable to load job links.";
-      setError(message);
+      handleError(err, 'An error occurred while loading job links. Please contact the administrator.');
       setLinks([]);
       setTotal(0);
     } finally {
@@ -447,8 +439,6 @@ export default function JobLinksPage() {
           </div>
         </section>
 
-        {countriesError ? <JobLinksErrorState message={countriesError} /> : null}
-
         <JobLinksFilters
           search={search}
           onSearchChange={setSearch}
@@ -460,8 +450,6 @@ export default function JobLinksPage() {
           onRefresh={loadLinks}
           loading={loadingLinks}
         />
-
-        {error ? <JobLinksErrorState message={error} /> : null}
 
         <JobLinksList
           items={links}

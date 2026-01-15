@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Radio, Keyboard, X, Play, RefreshCw, Download, Sparkles, MessageCircle, Send } from "lucide-react";
+import { FileText, Radio, Keyboard, X, Play, RefreshCw, Download, Sparkles, MessageCircle, Send, Briefcase } from "lucide-react";
 import TopNav from "../../components/TopNav";
 import { API_BASE } from "@/lib/api";
 
@@ -1674,12 +1674,6 @@ export default function Page() {
             style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
           >
             <div className="p-4 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Workspace</p>
-                  <h1 className="text-lg font-semibold text-slate-100">Job Application</h1>
-                </div>
-              </div>
               <div className="rounded-xl border border-slate-700 p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -1895,44 +1889,88 @@ export default function Page() {
 
             </div>
           </section>
-          <section className="flex flex-col gap-2">
-            <div
-              className={`relative overflow-hidden p-4 ${
-                jdSelectionMode ? "z-50 ring-2 ring-emerald-400 shadow-2xl" : ""
-              }`}
-            >
-              <div className="flex flex-col gap-2 sm:flex-row pb-3">
-                <input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://"
-                  className="w-full rounded-xl bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-white/10"
-                />
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                  <button
-                    onClick={handleGo}
-                    disabled={loadingAction === "go" || !selectedProfileId}
-                    className="min-w-[110px] rounded-xl bg-[#6366f1] px-4 py-2 text-sm font-semibold text-[#0b1224] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {loadingAction === "go" ? "Connecting..." : "Go"}
-                  </button>
-                  <button
-                    onClick={handleCheck}
-                    disabled={!canCheck}
-                    className="min-w-[110px] rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {loadingAction === "check" ? "Checking..." : "Check"}
-                  </button>
+          <section className="flex flex-col gap-2 bg-gradient-to-br from-slate-50 via-white to-slate-100 rounded-2xl shadow-lg">
+            <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 pt-8">
+              <header className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/20">
+                    <Briefcase className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
+                      Workspace
+                    </p>
+                    <h1 className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
+                      Job Application
+                    </h1>
+                  </div>
                 </div>
-              </div>
-              {jdSelectionMode ? (
-                <div className="absolute right-4 top-4 z-10 rounded-full bg-emerald-500/90 px-3 py-1 text-[11px] font-semibold text-emerald-950">
-                  Selection mode
-                </div>
-              ) : null}
-              <div className="relative min-h-[420px] h-[70vh] max-h-[80vh] overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
+                <p className="max-w-2xl text-base leading-relaxed text-slate-600">
+                  Manage your job applications, tailor resumes, and track your progress.
+                </p>
+              </header>
+              <div className="space-y-6">
+                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="mb-4">
+                    <h2 className="text-lg font-semibold text-slate-900">Job URL</h2>
+                    <p className="mt-1 text-sm text-slate-600">Enter the job posting URL to get started</p>
+                  </div>
+                  <div
+                    className={`relative rounded-2xl border-2 p-4 transition-all ${
+                      jdSelectionMode 
+                        ? "border-emerald-400 bg-emerald-50/50 ring-4 ring-emerald-400/20" 
+                        : "border-slate-200 bg-slate-50/50"
+                    }`}
+                  >
+                    {jdSelectionMode && (
+                      <div className="absolute right-6 top-6 z-10 rounded-full bg-emerald-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm">
+                        Selection mode
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <div className="flex-1">
+                        <input
+                          value={url}
+                          onChange={(e) => setUrl(e.target.value)}
+                          placeholder="https://example.com/job-posting"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20"
+                        />
+                      </div>
+                      <div className="flex gap-2 sm:flex-shrink-0">
+                        <button
+                          onClick={handleGo}
+                          disabled={loadingAction === "go" || !selectedProfileId}
+                          className="min-w-[100px] rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-indigo-600"
+                        >
+                          {loadingAction === "go" ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                              Connecting...
+                            </span>
+                          ) : (
+                            "Go"
+                          )}
+                        </button>
+                        <button
+                          onClick={handleCheck}
+                          disabled={!canCheck}
+                          className="min-w-[100px] rounded-xl border-2 border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {loadingAction === "check" ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                              Checking...
+                            </span>
+                          ) : (
+                            "Check"
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="relative min-h-[420px] h-[70vh] max-h-[80vh] overflow-hidden bg-gradient-to-br from-white via-slate-50 to-slate-100">
                 {streamFrame ? (
-                  <div className="h-full w-full overflow-auto bg-slate-950">
+                  <div className="h-full w-full overflow-auto bg-white">
                     <img
                       src={streamFrame}
                       alt="Remote browser stream"
@@ -1947,7 +1985,7 @@ export default function Page() {
                         key={browserSrc}
                         src={browserSrc}
                         partition={webviewPartition}
-                        style={{ height: "100%", width: "100%", backgroundColor: "#020617" }}
+                        style={{ height: "100%", width: "100%", backgroundColor: "#ffffff" }}
                       />
                       <div className="absolute top-2 right-3 flex items-center gap-2 text-[11px] text-slate-800">
                         <span className="rounded-full bg-slate-100lack/50 px-2 py-1">Electron view</span>
@@ -1963,7 +2001,7 @@ export default function Page() {
                         )}
                       </div>
                       {webviewStatus === "failed" && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 p-4 text-center text-sm text-slate-800">
+                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/95 via-slate-50/95 to-slate-100/95 backdrop-blur-sm p-4 text-center text-sm text-slate-700">
                           <div className="space-y-2">
                             <div>Could not load this page inside the Electron view.</div>
                             <a
@@ -1983,13 +2021,14 @@ export default function Page() {
                       <iframe
                         key={browserSrc}
                         src={browserSrc}
-                        className="h-full w-full"
+                        className="h-full w-full bg-white"
+                        style={{ backgroundColor: '#ffffff' }}
                         allowFullScreen
                         referrerPolicy="no-referrer"
                         onLoad={() => setFrameLoaded(true)}
                       />
                       {!frameLoaded && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 text-slate-800">
+                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/95 via-slate-50/95 to-slate-100/95 backdrop-blur-sm text-slate-700">
                           <div className="text-center space-y-2">
                             <div className="text-sm font-semibold">
                               Site may block iframe embedding.
@@ -2018,10 +2057,15 @@ export default function Page() {
                     </>
                   )
                 ) : (
-                  <div className="flex h-full items-center justify-center text-slate-800">
-                    <div className="text-center">
-                      <div className="text-sm font-semibold">No URL loaded</div>
-                      <div className="text-xs text-slate-700">
+                  <div className="flex h-full items-center justify-center text-slate-600">
+                    <div className="text-center space-y-2">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-indigo-100 to-cyan-100 mb-2">
+                        <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                        </svg>
+                      </div>
+                      <div className="text-sm font-semibold text-slate-700">No URL loaded</div>
+                      <div className="text-xs text-slate-500">
                         Enter a URL and click Go.
                       </div>
                     </div>
@@ -2032,6 +2076,119 @@ export default function Page() {
                     Streaming
                   </div>
                 )}
+                  </div>
+                </div>
+                {/* <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="relative min-h-[420px] h-[70vh] max-h-[80vh] overflow-hidden bg-gradient-to-br from-white via-slate-50 to-slate-100">
+                {streamFrame ? (
+                  <div className="h-full w-full overflow-auto bg-white">
+                    <img
+                      src={streamFrame}
+                      alt="Remote browser stream"
+                      className="block w-full"
+                    />
+                  </div>
+                ) : browserSrc ? (
+                  isElectron ? (
+                    <div className="relative h-full w-full">
+                      <webview
+                        ref={setWebviewRef as unknown as React.Ref<HTMLWebViewElement>}
+                        key={browserSrc}
+                        src={browserSrc}
+                        partition={webviewPartition}
+                        style={{ height: "100%", width: "100%", backgroundColor: "#ffffff" }}
+                      />
+                      <div className="absolute top-2 right-3 flex items-center gap-2 text-[11px] text-slate-800">
+                        <span className="rounded-full bg-slate-100lack/50 px-2 py-1">Electron view</span>
+                        {webviewStatus === "ready" && (
+                          <span className="rounded-full bg-[#5ef3c5]/80 px-2 py-1 text-[#0b1224]">
+                            Loaded
+                          </span>
+                        )}
+                        {webviewStatus === "loading" && (
+                          <span className="rounded-full bg-slate-100lack/50 px-2 py-1 text-slate-800">
+                            Loading…
+                          </span>
+                        )}
+                      </div>
+                      {webviewStatus === "failed" && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/95 via-slate-50/95 to-slate-100/95 backdrop-blur-sm p-4 text-center text-sm text-slate-700">
+                          <div className="space-y-2">
+                            <div>Could not load this page inside the Electron view.</div>
+                            <a
+                              href={browserSrc}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center justify-center rounded-full bg-[#5ef3c5] px-4 py-2 text-xs font-semibold text-[#0b1224] hover:brightness-110"
+                            >
+                              Open in browser
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <iframe
+                        key={browserSrc}
+                        src={browserSrc}
+                        className="h-full w-full bg-white"
+                        style={{ backgroundColor: '#ffffff' }}
+                        allowFullScreen
+                        referrerPolicy="no-referrer"
+                        onLoad={() => setFrameLoaded(true)}
+                      />
+                      {!frameLoaded && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/95 via-slate-50/95 to-slate-100/95 backdrop-blur-sm text-slate-700">
+                          <div className="text-center space-y-2">
+                            <div className="text-sm font-semibold">
+                              Site may block iframe embedding.
+                            </div>
+                            <a
+                              href={browserSrc}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center justify-center rounded-full bg-[#5ef3c5] px-4 py-2 text-xs font-semibold text-[#0b1224] hover:brightness-110"
+                            >
+                              Open in new tab
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                      <div className="absolute top-2 right-2 flex gap-2">
+                        <a
+                          href={browserSrc}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-full bg-slate-100lack/50 px-3 py-1 text-[11px] text-slate-800 hover:bg-slate-100lack/60"
+                        >
+                          Open in new tab
+                        </a>
+                      </div>
+                    </>
+                  )
+                ) : (
+                  <div className="flex h-full items-center justify-center text-slate-600">
+                    <div className="text-center space-y-2">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-indigo-100 to-cyan-100 mb-2">
+                        <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                        </svg>
+                      </div>
+                      <div className="text-sm font-semibold text-slate-700">No URL loaded</div>
+                      <div className="text-xs text-slate-500">
+                        Enter a URL and click Go.
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {streamConnected && (
+                  <div className="pointer-events-none absolute bottom-2 right-3 rounded-full bg-slate-100lack/40 px-3 py-1 text-[11px] text-[#5ef3c5]">
+                    Streaming
+                  </div>
+                )}
+                  </div>
+                </div> */}
               </div>
             </div>
           </section>

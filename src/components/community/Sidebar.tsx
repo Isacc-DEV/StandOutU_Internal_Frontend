@@ -52,7 +52,7 @@ export function Sidebar({
             No channels yet.
           </div>
         ) : (
-          <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
+          <div className="space-y-1">
             {channels.map((channel) => {
               const active = channel.id === activeThreadId;
               const unread = unreadMap.get(channel.id) || 0;
@@ -60,7 +60,7 @@ export function Sidebar({
                 <button
                   key={channel.id}
                   onClick={() => onThreadSelect(channel.id)}
-                  className={`flex w-full items-center justify-between border-b border-slate-700 px-3 py-2 text-left text-sm transition last:border-b-0 ${
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${
                     active
                       ? 'bg-slate-700 text-white'
                       : 'text-slate-300 hover:bg-slate-800'
@@ -116,8 +116,8 @@ export function Sidebar({
                   key={member.id}
                   onClick={() => onStartDm(member.id)}
                   disabled={Boolean(creatingDmId)}
-                  className={`flex w-full items-center gap-3 rounded-2xl border border-slate-700 bg-slate-800 px-3 py-2 text-left transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 ${
-                    isActive ? 'bg-slate-700' : ''
+                  className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left transition hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isActive ? 'bg-slate-700/30' : ''
                   }`}
                 >
                   <AvatarBubble name={member.userName} active={isActive} avatarUrl={member.avatarUrl} />

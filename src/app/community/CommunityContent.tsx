@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { MessageCircle } from 'lucide-react';
 import TopNav from '../../components/TopNav';
 import { API_BASE, api } from '../../lib/api';
 import { useAuth } from '../../lib/useAuth';
@@ -374,17 +375,8 @@ export function CommunityContent() {
 
   const inputDisabled = !activeThreadId || sending || uploading || user?.role === 'OBSERVER';
 
-  const layoutStyle = {
-    '--community-accent': '#6366f1',
-    '--community-ink': '#0b1224',
-    '--community-soft': '#f1f5f9',
-    '--community-line': '#e2e8f0',
-    backgroundImage: 'radial-gradient(circle at 20% 20%, #ffffff 0%, #f1f5f9 45%, #e2e8f0 100%)',
-    backgroundColor: '#f8fafc',
-  } as CSSProperties;
-
   return (
-    <main className="min-h-screen text-slate-900" style={layoutStyle}>
+    <main className="min-h-screen bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-white text-slate-900">
       <style>{`
         @keyframes highlight {
           0%, 100% { background-color: transparent; }
@@ -419,7 +411,25 @@ export function CommunityContent() {
             </div>
           </section>
 
-          <div className="flex w-full gap-4 overflow-x-auto pb-2 px-4 py-6">
+          <div className="flex flex-col w-full gap-4 px-4 py-6">
+            <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
+              <header className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/20">
+                    <MessageCircle className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">
+                      Community
+                    </p>
+                    <h1 className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
+                      Team Communication
+                    </h1>
+                  </div>
+                </div>
+              </header>
+            </div>
+            <div className="flex w-full gap-4 overflow-x-auto pb-2">
             <section
               className={`relative flex flex-1 min-h-[70vh] max-h-[80vh] min-w-[300px] flex-col rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden transition-all duration-300 w-full`}
               style={{
@@ -530,28 +540,28 @@ export function CommunityContent() {
                 onClose={() => setShowRoomInfo(false)}
               />
             )}
+            </div>
           </div>
         </div>
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            message={contextMenu.message}
+            userId={user?.id}
+            pinnedMessages={pinnedMessages}
+            onEdit={(msg) => {
+              setEditingMessage(msg);
+              setEditDraft(msg.body);
+            }}
+            onReply={setReplyingTo}
+            onPin={handlePinMessage}
+            onUnpin={(msgId) => handleUnpinMessage(msgId, setPinnedMessages)}
+            onDelete={(msgId) => handleDeleteMessage(msgId, messages, setMessages)}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
       </div>
-
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          message={contextMenu.message}
-          userId={user?.id}
-          pinnedMessages={pinnedMessages}
-          onEdit={(msg) => {
-            setEditingMessage(msg);
-            setEditDraft(msg.body);
-          }}
-          onReply={setReplyingTo}
-          onPin={handlePinMessage}
-          onUnpin={(msgId) => handleUnpinMessage(msgId, setPinnedMessages)}
-          onDelete={(msgId) => handleDeleteMessage(msgId, messages, setMessages)}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
     </main>
   );
 }

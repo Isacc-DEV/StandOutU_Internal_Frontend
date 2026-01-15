@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { LogOut, Home, Info, LayoutDashboard, Link2, Users, Calendar, CheckSquare, FileText, UserCheck, Shield } from 'lucide-react';
 import { clearAuth } from '../lib/auth';
 import { api, API_BASE } from '../lib/api';
 import { getReportsLastSeen, subscribeNotificationRefresh, triggerNotificationRefresh, useNotificationWebSocket } from '../lib/notifications';
 import { useAuth } from '../lib/useAuth';
+import { handleError } from '../lib/errorHandler';
 
 function getInitials(name?: string | null) {
   if (!name) return 'DM';
@@ -298,20 +300,23 @@ function NavItem({
   label,
   active,
   notificationCount,
+  icon: Icon,
 }: {
   href: string;
   label: string;
   active: boolean;
   notificationCount?: number;
+  icon?: React.ComponentType<{ className?: string }>;
 }) {
   const count = notificationCount ?? 0;
   return (
     <Link
       href={href}
-      className={`relative rounded-full px-3 py-2 text-sm transition ${
+      className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-sm transition ${
         active ? 'bg-white/10 text-white' : 'text-slate-200 hover:text-white'
       }`}
     >
+      {Icon && <Icon className="h-4 w-4" />}
       {label}
       {count > 0 && (
         <>
@@ -343,10 +348,8 @@ export default function TopNav() {
   const initials = getInitials(user?.userName);
   const totalNotifications = Object.values(navNotifications).reduce((sum, value) => sum + value, 0);
   const hasNotifications = totalNotifications > 0;
-  const [menuOpen, setMenuOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [inboxLoading, setInboxLoading] = useState(false);
-  const [inboxError, setInboxError] = useState('');
   const [inboxItems, setInboxItems] = useState<NotificationItem[]>([]);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -356,7 +359,6 @@ export default function TopNav() {
     const handleClick = (event: MouseEvent) => {
       if (!menuRef.current) return;
       if (!menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
         setInboxOpen(false);
       }
     };
@@ -369,7 +371,6 @@ export default function TopNav() {
   const loadInbox = async () => {
     if (!token || !user) return;
     setInboxLoading(true);
-    setInboxError('');
     try {
       const isReviewer = user.role === 'ADMIN' || user.role === 'MANAGER';
       const reportSince = !isReviewer ? getReportsLastSeen(user.id, user.role) : null;
@@ -378,8 +379,7 @@ export default function TopNav() {
       setInboxItems(Array.isArray(data?.notifications) ? data.notifications : []);
       triggerNotificationRefresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to load notifications.';
-      setInboxError(message);
+      handleError(err, 'An error occurred while loading notifications. Please contact the administrator.');
     } finally {
       setInboxLoading(false);
     }
@@ -522,7 +522,7 @@ export default function TopNav() {
           </Link>
         </div>
         <nav className="flex items-center gap-2">
-          <NavItem href="/" label="Home" active={pathname === '/'} notificationCount={navNotifications.home} />
+          <NavItem href="/" label="Home" active={pathname === '/'} notificationCount={navNotifications.home} icon={Home} />
           {pathname === '/' ? (
             <a
               href="#about"
@@ -533,15 +533,17 @@ export default function TopNav() {
                   aboutSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
               }}
-              className="relative rounded-full px-3 py-2 text-sm transition text-slate-200 hover:text-white"
+              className="relative flex items-center gap-2 rounded-full px-3 py-2 text-sm transition text-slate-200 hover:text-white"
             >
+              <Info className="h-4 w-4" />
               About
             </a>
           ) : (
             <Link
               href="/#about"
-              className="relative rounded-full px-3 py-2 text-sm transition text-slate-200 hover:text-white"
+              className="relative flex items-center gap-2 rounded-full px-3 py-2 text-sm transition text-slate-200 hover:text-white"
             >
+              <Info className="h-4 w-4" />
               About
             </Link>
           )}
@@ -550,35 +552,41 @@ export default function TopNav() {
             label="Workspace"
             active={pathname.startsWith('/workspace')}
             notificationCount={navNotifications.workspace}
+            icon={LayoutDashboard}
           />
           <NavItem
             href="/job-links"
             label="Job links"
             active={pathname.startsWith('/job-links')}
+            icon={Link2}
           />
           <NavItem
             href="/community"
             label="Community"
             active={pathname.startsWith('/community')}
             notificationCount={navNotifications.community}
+            icon={Users}
           />
           <NavItem
             href="/calendar"
             label="Calendar"
             active={pathname.startsWith('/calendar')}
             notificationCount={navNotifications.calendar}
+            icon={Calendar}
           />
           <NavItem
             href="/tasks"
             label="Tasks"
             active={pathname.startsWith('/tasks')}
             notificationCount={navNotifications.tasks}
+            icon={CheckSquare}
           />
           <NavItem
             href={reportsHref}
             label="Reports"
             active={reportsActive}
             notificationCount={navNotifications.reports}
+            icon={FileText}
           />
           {isManager && (
             <NavItem
@@ -586,6 +594,7 @@ export default function TopNav() {
               label="Manager"
               active={pathname.startsWith('/manager')}
               notificationCount={navNotifications.manager}
+              icon={UserCheck}
             />
           )}
           {isAdmin && (
@@ -594,6 +603,7 @@ export default function TopNav() {
               label="Admin"
               active={pathname.startsWith('/admin')}
               notificationCount={navNotifications.admin}
+              icon={Shield}
             />
           )}
         </nav>
@@ -634,17 +644,12 @@ export default function TopNav() {
                   <div className="mb-2 text-[11px] uppercase tracking-[0.2em] text-slate-300">
                     Notifications
                   </div>
-                  {inboxError ? (
-                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-rose-200">
-                      {inboxError}
-                    </div>
-                  ) : null}
                   {inboxLoading ? (
                     <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-300">
                       Loading notifications...
                     </div>
                   ) : null}
-                  {!inboxLoading && inboxItems.length === 0 && !inboxError ? (
+                  {!inboxLoading && inboxItems.length === 0 ? (
                     <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-300">
                       No new notifications.
                     </div>
@@ -676,9 +681,8 @@ export default function TopNav() {
                   </div>
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => setMenuOpen((prev) => !prev)}
+              <Link
+                href="/profile"
                 className="relative flex items-center rounded-full bg-white/10 p-1 text-xs text-white transition hover:bg-white/20"
               >
                 <span className="relative flex h-7 w-7 items-center justify-center">
@@ -693,24 +697,15 @@ export default function TopNav() {
                 {hasNotifications && (
                   <span className="sr-only">{formatNotificationCount(totalNotifications)} new notifications</span>
                 )}
+              </Link>
+              <button
+                type="button"
+                onClick={signOut}
+                aria-label="Log out"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+              >
+                <LogOut className="h-4 w-4" />
               </button>
-              {menuOpen && (
-                <div className="absolute right-0 top-full z-50 mt-2 w-40 rounded-2xl border border-white/10 bg-[#181D2C] p-1 text-xs text-slate-100 shadow-2xl">
-                  <Link
-                    href="/profile"
-                    className="block rounded-lg px-3 py-2 transition hover:bg-white/10"
-                  >
-                    Profile
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={signOut}
-                    className="w-full rounded-lg px-3 py-2 text-left transition hover:bg-white/10"
-                  >
-                    Log out
-                  </button>
-                </div>
-              )}
             </div>
           ) : (
             <Link
