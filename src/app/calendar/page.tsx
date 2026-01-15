@@ -15,10 +15,11 @@ import { DEFAULT_TIMEZONE_ID, TIMEZONE_OPTIONS, type TimezoneOption } from '../.
 import { api, API_BASE } from '../../lib/api';
 
 type CalendarAccount = {
+  id: string;  // mailbox_id from user_oauth_accounts
   email: string;
   name?: string | null;
   timezone?: string | null;
-  accountId?: string;
+  accountId?: string;  // Keep for compatibility
   isPrimary?: boolean;
 };
 
@@ -30,7 +31,8 @@ type CalendarEvent = {
   isAllDay?: boolean;
   organizer?: string;
   location?: string;
-  mailbox?: string;
+  mailboxId?: string;  // Changed from mailbox?: string
+  mailbox?: string;  // Keep email for display/compatibility
 };
 
 type EventPopover = {
@@ -40,7 +42,8 @@ type EventPopover = {
   isAllDay?: boolean;
   organizer?: string;
   location?: string;
-  mailbox?: string;
+  mailboxId?: string;  // Add mailboxId
+  mailbox?: string;  // Keep for compatibility
   position: { x: number; y: number };
 };
 
@@ -275,12 +278,20 @@ function CalendarPageContent() {
     const hiddenSet = new Set(hiddenMailboxes);
     return events
       .filter((ev) => {
+        // Filter by mailboxId if available, otherwise fall back to mailbox email
+        const mailboxId = ev.mailboxId;
         const mailbox = ev.mailbox ? normalizeMailbox(ev.mailbox) : '';
+        if (mailboxId) {
+          return !hiddenSet.has(mailboxId);
+        }
         return !mailbox || !hiddenSet.has(mailbox);
       })
       .map((ev) => {
+        // Use mailboxId for color lookup if available, otherwise use mailbox email
+        const mailboxId = ev.mailboxId;
         const mailbox = ev.mailbox ? normalizeMailbox(ev.mailbox) : '';
-        const color = getMailboxColor(mailbox, customMailboxColors);
+        const colorKey = mailboxId || mailbox;
+        const color = getMailboxColor(colorKey, customMailboxColors);
         return {
           ...ev,
           allDay: Boolean(ev.isAllDay),
@@ -313,25 +324,29 @@ function CalendarPageContent() {
 
   const mailboxCards = useMemo(() => {
     const connected = connectedAccounts.map((account) => ({
+      id: account.id,  // mailbox_id
       email: normalizeMailbox(account.email),
       name: account.name,
       status: 'connected' as const,
       accountId: account.accountId,
       isPrimary: account.isPrimary,
     }));
-    const connectedSet = new Set(connected.map((account) => account.email));
+    const connectedSet = new Set(connected.map((account) => account.id));  // Use ID instead of email
+    const connectedEmailSet = new Set(connected.map((account) => account.email));
     const failed = failedMailboxes
       .map(normalizeMailbox)
       .filter(Boolean)
-      .filter((mailbox) => !connectedSet.has(mailbox))
+      .filter((mailbox) => !connectedEmailSet.has(mailbox))
       .map((mailbox) => ({
+        id: '',  // No ID for failed mailboxes
         email: mailbox,
         status: 'needs-access' as const,
       }));
     const failedSet = new Set(failed.map((account) => account.email));
     const added = uniqueMailboxes(extraMailboxes)
-      .filter((mailbox) => !connectedSet.has(mailbox) && !failedSet.has(mailbox))
+      .filter((mailbox) => !connectedEmailSet.has(mailbox) && !failedSet.has(mailbox))
       .map((mailbox) => ({
+        id: '',  // No ID for added mailboxes
         email: mailbox,
         status: 'added' as const,
       }));
@@ -443,11 +458,11 @@ function CalendarPageContent() {
     setExtraMailboxes((prev) => prev.filter((entry) => entry !== mailbox));
   };
 
-  const toggleMailboxVisibility = useCallback((mailbox: string) => {
-    const normalized = normalizeMailbox(mailbox);
-    if (!normalized) return;
+  const toggleMailboxVisibility = useCallback((mailboxIdOrEmail: string) => {
+    // Can be either mailboxId (UUID) or email (for backward compatibility)
+    if (!mailboxIdOrEmail) return;
     setHiddenMailboxes((prev) =>
-      prev.includes(normalized) ? prev.filter((entry) => entry !== normalized) : [...prev, normalized],
+      prev.includes(mailboxIdOrEmail) ? prev.filter((entry) => entry !== mailboxIdOrEmail) : [...prev, mailboxIdOrEmail],
     );
   }, []);
 
@@ -473,7 +488,16 @@ function CalendarPageContent() {
       }, token);
       setEvents(data?.events || []);
       setWarning(data?.warning);
-      setConnectedAccounts(data?.accounts ?? []);
+      // Ensure accounts have id field (mailbox_id)
+      setConnectedAccounts(
+        (data?.accounts ?? []).map((acc) => ({
+          id: (acc as any).id || acc.accountId || '',  // Use id if available, fallback to accountId
+          email: acc.email,
+          name: acc.name ?? null,
+          accountId: acc.accountId,
+          isPrimary: acc.isPrimary ?? false,
+        }))
+      );
       setFailedMailboxes(data?.failedMailboxes ?? []);
     } catch (err) {
       console.error(err);
@@ -492,7 +516,14 @@ function CalendarPageContent() {
         await api(`/calendar/oauth/accounts/${account.accountId}`, {
           method: 'DELETE',
         }, token);
-        setHiddenMailboxes((prev) => prev.filter((entry) => entry !== normalizeMailbox(account.email)));
+        // Remove from hidden mailboxes using both ID and email for compatibility
+        const accountId = connectedAccounts.find((acc) => acc.accountId === account.accountId)?.id;
+        setHiddenMailboxes((prev) => 
+          prev.filter((entry) => {
+            const normalizedEmail = normalizeMailbox(account.email);
+            return entry !== normalizedEmail && entry !== accountId;
+          })
+        );
         if (viewRange) {
           await fetchEvents(viewRange, 'db');
         } else {
@@ -501,7 +532,13 @@ function CalendarPageContent() {
           );
           setEvents((prev) =>
             prev.filter(
-              (event) => normalizeMailbox(event.mailbox || '') !== normalizeMailbox(account.email),
+              (event) => {
+                const eventMailboxId = event.mailboxId;
+                const eventMailbox = normalizeMailbox(event.mailbox || '');
+                const accountMailboxId = accountId;
+                const accountMailbox = normalizeMailbox(account.email);
+                return eventMailboxId !== accountMailboxId && eventMailbox !== accountMailbox;
+              }
             ),
           );
         }
@@ -512,7 +549,7 @@ function CalendarPageContent() {
         setDisconnectingId(null);
       }
     },
-    [fetchEvents, token, viewRange],
+    [fetchEvents, token, viewRange, connectedAccounts],
   );
 
   const handleSyncMailboxes = useCallback(() => {
@@ -559,6 +596,7 @@ function CalendarPageContent() {
       );
       setConnectedAccounts(
         accounts.map((acc) => ({
+          id: acc.id,  // mailbox_id
           email: acc.email,
           name: acc.displayName ?? null,
           accountId: acc.accountId,
@@ -626,6 +664,7 @@ function CalendarPageContent() {
       const organizer = info.event.extendedProps.organizer as string | undefined;
       const location = info.event.extendedProps.location as string | undefined;
       const mailbox = info.event.extendedProps.mailbox as string | undefined;
+      const mailboxId = info.event.extendedProps.mailboxId as string | undefined;
       setEventPopover({
         title: info.event.title,
         start: info.event.start,
@@ -633,6 +672,7 @@ function CalendarPageContent() {
         isAllDay: info.event.allDay,
         organizer,
         location,
+        mailboxId,
         mailbox,
         position: { x, y },
       });
@@ -644,8 +684,14 @@ function CalendarPageContent() {
 
   useEffect(() => {
     if (!viewRange || !token) return;
-    void fetchEvents(viewRange, 'db');
-  }, [fetchEvents, token, viewRange]);
+    // Admin: auto-sync from Graph API when date range changes (saves to DB)
+    // Users: always fetch from DB (they see admin's synced events)
+    if (canManageOutlook && connectedAccounts.length > 0) {
+      void fetchEvents(viewRange, 'graph');
+    } else {
+      void fetchEvents(viewRange, 'db');
+    }
+  }, [fetchEvents, token, viewRange, canManageOutlook, connectedAccounts.length]);
 
   useEffect(() => {
     if (!eventPopover) return;
@@ -770,16 +816,19 @@ function CalendarPageContent() {
                   <>
                     {visibleMailboxCards.length ? (
                       visibleMailboxCards.map((account) => {
-                        const mailboxKey = normalizeMailbox(account.email);
+                        // Use account.id (mailboxId) if available, otherwise fall back to email
+                        const mailboxKey = account.id || normalizeMailbox(account.email);
                         const isHidden = hiddenMailboxSet.has(mailboxKey);
                         if (account.status === 'connected') {
-                          const isPrimary = account.isPrimary ?? (primaryEmail && mailboxKey === primaryEmail);
+                          const isPrimary = account.isPrimary ?? (primaryEmail && normalizeMailbox(account.email) === primaryEmail);
                           const statusLabel = isPrimary ? 'Primary' : 'Connected';
                           const statusText = isHidden ? 'Hidden' : 'Shown';
-                          const mailboxColor = getMailboxColor(account.email, customMailboxColors);
+                          // Use account.id for color if available, otherwise use email
+                          const colorKey = account.id || account.email;
+                          const mailboxColor = getMailboxColor(colorKey, customMailboxColors);
                           return (
                             <div
-                              key={account.email}
+                              key={account.id || account.email}
                               role="button"
                               tabIndex={0}
                               onClick={() => toggleMailboxVisibility(mailboxKey)}
@@ -798,7 +847,7 @@ function CalendarPageContent() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={(e) => handleColorIndicatorClick(e, account.email)}
+                                    onClick={(e) => handleColorIndicatorClick(e, colorKey)}
                                     className="color-indicator-button w-3 h-3 rounded-full flex-shrink-0 hover:ring-2 hover:ring-slate-400 hover:ring-offset-2 hover:ring-offset-slate-800 transition cursor-pointer"
                                     style={{ backgroundColor: mailboxColor.bg }}
                                     title="Click to change color"
@@ -834,7 +883,8 @@ function CalendarPageContent() {
                           );
                         }
                         if (account.status === 'needs-access') {
-                          const mailboxColor = getMailboxColor(account.email, customMailboxColors);
+                          const colorKey = account.id || account.email;
+                          const mailboxColor = getMailboxColor(colorKey, customMailboxColors);
                           return (
                             <div
                               key={account.email}
@@ -844,7 +894,7 @@ function CalendarPageContent() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={(e) => handleColorIndicatorClick(e, account.email)}
+                                  onClick={(e) => handleColorIndicatorClick(e, colorKey)}
                                   className="color-indicator-button w-3 h-3 rounded-full flex-shrink-0 hover:ring-2 hover:ring-amber-400 hover:ring-offset-2 hover:ring-offset-amber-900/20 transition cursor-pointer"
                                   style={{ backgroundColor: mailboxColor.bg }}
                                   title="Click to change color"
@@ -861,7 +911,8 @@ function CalendarPageContent() {
                           );
                         }
                         const addedLabel = isHidden ? 'Added (hidden)' : 'Added';
-                        const mailboxColor = getMailboxColor(account.email, customMailboxColors);
+                        const colorKey = account.id || account.email;
+                        const mailboxColor = getMailboxColor(colorKey, customMailboxColors);
                         return (
                           <button
                             key={account.email}
@@ -877,7 +928,7 @@ function CalendarPageContent() {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleColorIndicatorClick(e, account.email);
+                                  handleColorIndicatorClick(e, colorKey);
                                 }}
                                 className="color-indicator-button w-3 h-3 rounded-full flex-shrink-0 hover:ring-2 hover:ring-slate-400 hover:ring-offset-2 hover:ring-offset-slate-800 transition cursor-pointer"
                                 style={{ backgroundColor: mailboxColor.bg }}
