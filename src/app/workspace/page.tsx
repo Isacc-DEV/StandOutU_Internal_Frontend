@@ -1456,6 +1456,8 @@ export default function Page() {
         try {
           localStorage.setItem("last_resume_json", JSON.stringify(normalized));
           localStorage.setItem("last_job_description", jdDraft.trim());
+          // Clear chat messages since resume and JD are updated
+          setChatMessages([]);
         } catch (e) {
           console.error("Failed to save resume data for chat", e);
         }
@@ -1520,6 +1522,8 @@ export default function Page() {
         try {
           localStorage.setItem("last_resume_json", JSON.stringify(normalized));
           localStorage.setItem("last_job_description", jdDraft.trim());
+          // Clear chat messages since resume and JD are updated
+          setChatMessages([]);
         } catch (e) {
           console.error("Failed to save resume data for chat", e);
         }
@@ -2613,27 +2617,24 @@ export default function Page() {
       )}
 
       {/* AI Assistant Button - Fixed Bottom Right */}
-      <button
-        onClick={handleOpenChatModal}
-        className="group fixed bottom-6 right-6 z-50 flex items-center gap-0 rounded-full bg-indigo-500 p-3 text-white shadow-lg transition-all duration-300 hover:bg-indigo-600 hover:shadow-xl hover:px-4 active:scale-95"
-        title="AI Assistant"
-      >
+      {!chatModalOpen && (
+        <button
+          onClick={handleOpenChatModal}
+          className="group fixed bottom-6 right-6 z-50 flex items-center gap-0 rounded-full bg-indigo-500 p-3 text-white shadow-lg transition-all duration-300 hover:bg-indigo-600 hover:shadow-xl hover:px-4 active:scale-95"
+          title="AI Assistant"
+        >
         <MessageCircle className="h-6 w-6 flex-shrink-0" />
         <span className="max-w-0 overflow-hidden whitespace-nowrap text-sm font-medium opacity-0 transition-all duration-300 group-hover:max-w-[120px] group-hover:ml-2 group-hover:opacity-100">
           AI Assistant
         </span>
       </button>
+      )}
 
       {/* Chat Modal */}
       {chatModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
-          onClick={() => setChatModalOpen(false)}
+          className="fixed bottom-6 right-6 z-[9999] flex flex-col h-[50vh] w-full max-w-md rounded-3xl border border-slate-200 bg-white shadow-2xl"
         >
-          <div
-            className="flex h-[80vh] w-full max-w-2xl flex-col rounded-3xl border border-slate-200 bg-white shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div className="flex items-center gap-3">
@@ -2739,7 +2740,6 @@ export default function Page() {
                 </button>
               </form>
             </div>
-          </div>
         </div>
       )}
     </main>
