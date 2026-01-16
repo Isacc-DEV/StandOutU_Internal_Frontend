@@ -311,81 +311,90 @@ export default function Page() {
           </div>
 
           {/* Team Section */}
-          <div className="relative py-24">
+          <div className="relative py-24 bg-gradient-to-b from-[#0b1224] via-[#0f162b] to-[#0b1224]">
             <div className="mx-auto max-w-screen-2xl px-4">
-              <div className="mb-16 text-center">
-                <div className="mb-8 flex items-center justify-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#6366f1]/20 text-[#6366f1]">
-                    <Users className="h-6 w-6" />
+              <div className="mb-3 text-center">
+                <div className="mb-3 flex items-center justify-center gap-3">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6366f1]/30 to-[#8b5cf6]/30 text-[#6366f1] shadow-lg shadow-[#6366f1]/20">
+                    <Users className="h-7 w-7" />
                   </div>
-                  <h2 className="text-3xl font-bold sm:text-4xl">Our Team</h2>
+                  <h2 className="text-4xl font-bold sm:text-5xl bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+                    Our Team
+                  </h2>
                 </div>
               </div>
-              <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-                {[
-                  {
-                    name: "Isacc Wang",
-                    role: "CEO & Founder",
-                    photo: "/images/aea7df34-be01-48a6-b385-67e0bdc6670a.png",
-                  },
-                  {
-                    name: "Rohail Aman",
-                    role: "CTO & Co-Founder",
-                    photo: "/images/8252b997-7e81-406a-aaf5-1bd532ffa20d.png",
-                  },
-                  {
-                    name: "James Wang",
-                    role: "Lead Engineer & Co-Founder",
-                    photo: "/images/1868fb7c-134a-48b2-8853-31e32d2e7052.png",
-                  },
-                  {
-                    name: "Amano Jun",
-                    role: "Frontend Developer & UI/UX Designer",
-                    photo: "/images/8291bc18-10e0-14ef-ad31-ef88b01.png",
-                  },
-                  {
-                    name: "Muneer",
-                    role: "Account Manager",
-                    photo: "images/ddd7aee4-b22c-431b-be31-81d250a0a4ee.png",
-                  },
-                  {
-                    name: "Sabeela",
-                    role: "HR Manager",
-                    photo: "images/d851bc17-16d0-42bf-ae37-af97d077d760.png",
-                  },
-                  {
-                    name: "Jolain",
-                    role: "Marketing Manager",
-                    photo: "images/82abfafa-e512-453b-82d9-ec2ddebf0c3a.png",
-                  },
-                  {
-                    name: "Sam",
-                    role: "Bidding Manager",
-                    photo: "images/57d18289-cd19-4cb2-8c95-b84049c7c37d.png",
-                  },
-                  {
-                    name: "Aftab",
-                    role: "Business Developer",
-                    photo: "images/a3fe482a-c24c-aa23-b221-77ae290fa9d33.png",
-                  }
-                ].map((member, index) => (
-                  <div
-                    key={index}
-                    className="rounded-2xl border border-white/10 bg-[#111a32] p-6 transition hover:border-white/20"
-                  >
-                    <div className="mb-4 flex justify-center">
-                      <div className="relative h-32 w-32 overflow-hidden rounded-full border-2 border-white/20">
-                        <img
-                          src={member.photo}
-                          alt={member.name}
-                          className="h-full w-full object-cover"
-                        />
+              <div className="overflow-x-auto overflow-y-visible py-8 pb-12 -mx-4 px-4">
+                <div className="flex gap-2 min-w-max justify-center items-start">
+                  {[
+                    {
+                      name: "Sam",
+                      role: "Bidding Manager",
+                      photo: "images/57d18289-cd19-4cb2-8c95-b84049c7c37d.png",
+                    },
+                    {
+                      name: "Sabeela",
+                      role: "HR Manager",
+                      photo: "images/d851bc17-16d0-42bf-ae37-af97d077d760.png",
+                    },
+                    {
+                      name: "Amano Jun",
+                      role: "Frontend Developer & UI/UX Designer",
+                      photo: "/images/8291bc18-10e0-14ef-ad31-ef88b01.png",
+                    },
+                    {
+                      name: "Rohail Aman",
+                      role: "CTO & Co-Founder",
+                      photo: "/images/8252b997-7e81-406a-aaf5-1bd532ffa20d.png",
+                    },
+                    {
+                      name: "Isacc Wang",
+                      role: "CEO & Founder",
+                      photo: "/images/aea7df34-be01-48a6-b385-67e0bdc6670a.png",
+                    },
+                    {
+                      name: "James Wang",
+                      role: "Lead Engineer & Co-Founder",
+                      photo: "/images/1868fb7c-134a-48b2-8853-31e32d2e7052.png",
+                    },
+                    {
+                      name: "Muneer",
+                      role: "Account Manager",
+                      photo: "images/ddd7aee4-b22c-431b-be31-81d250a0a4ee.png",
+                    },
+                    {
+                      name: "Jolain",
+                      role: "Marketing Manager",
+                      photo: "images/82abfafa-e512-453b-82d9-ec2ddebf0c3a.png",
+                    },
+                    {
+                      name: "Aftab",
+                      role: "Business Developer",
+                      photo: "images/a3fe482a-c24c-aa23-b221-77ae290fa9d33.png",
+                    }
+                  ].map((member, index) => (
+                    <div
+                      key={index}
+                      className="group flex flex-col items-center transition-all duration-300 flex-shrink-0 w-28 pt-4"
+                    >
+                      <div className="relative mb-4 flex items-center justify-center h-28">
+                        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#6366f1]/40 to-[#8b5cf6]/40 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 scale-150" />
+                        <div className="relative h-16 w-16 group-hover:h-28 group-hover:w-28 rounded-full ring-2 group-hover:ring-4 ring-white/10 group-hover:ring-[#6366f1]/50 transition-all duration-300 overflow-hidden">
+                          <img
+                            src={member.photo}
+                            alt={member.name}
+                            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-16 w-16 group-hover:h-28 group-hover:w-28 object-cover rounded-full transition-all duration-300 origin-center"
+                          />
+                        </div>
                       </div>
+                      <h3 className="mb-1 text-base font-bold text-white group-hover:text-[#6366f1] transition-colors duration-300 text-center">
+                        {member.name}
+                      </h3>
+                      <p className="text-center text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors duration-300 leading-tight">
+                        {member.role}
+                      </p>
                     </div>
-                    <h3 className="mb-1 text-center text-xl font-semibold">{member.name}</h3>
-                    <p className="mb-4 text-center text-sm text-[#6366f1]">{member.role}</p>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </div>
