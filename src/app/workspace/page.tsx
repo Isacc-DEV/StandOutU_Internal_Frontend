@@ -3,9 +3,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Radio, Keyboard, X, Play, RefreshCw, Download, Sparkles, MessageCircle, Send, Briefcase, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, Radio, Keyboard, X, Play, RefreshCw, Download, Sparkles, MessageCircle, Send, Briefcase, ChevronLeft, ChevronRight, Pencil, Save, Paperclip, Trash2 } from "lucide-react";
 import TopNav from "../../components/TopNav";
 import { API_BASE } from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
 
 const CONNECT_TIMEOUT_MS = 20000;
 const CHECK_TIMEOUT_MS = 10000;
@@ -283,6 +284,19 @@ export default function Page() {
   const webviewRef = useRef<WebviewHandle | null>(null);
   const [showGenerateResumeDropdown, setShowGenerateResumeDropdown] = useState(false);
   const generateResumeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const { token } = useAuth();
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<{
+    id?: string;
+    reportDate: string;
+    status: 'draft' | 'in_review' | 'accepted' | 'rejected';
+    content?: string | null;
+  } | null>(null);
+  const [reportEditContent, setReportEditContent] = useState('');
+  const [reportIsEditing, setReportIsEditing] = useState(false);
+  const [reportSaving, setReportSaving] = useState(false);
+  const [reportSending, setReportSending] = useState(false);
+  const [reportError, setReportError] = useState('');
   const setWebviewRef = useCallback((node: WebviewHandle | null) => {
     webviewRef.current = node;
     if (node) {
@@ -1771,6 +1785,107 @@ export default function Page() {
     );
   }
 
+  const toDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDateLabel = (value: string) => {
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(date);
+  };
+
+  const handleCreateReport = useCallback(async () => {
+    if (!token) return;
+    const today = toDateKey(new Date());
+    setReportError('');
+    try {
+      // Try to fetch existing report for today
+      const existing = await api(`/daily-reports/by-date?date=${today}`).catch(() => null) as {
+        id: string;
+        reportDate: string;
+        status: 'draft' | 'in_review' | 'accepted' | 'rejected';
+        content?: string | null;
+      } | null;
+      
+      if (existing) {
+        setSelectedReport(existing);
+        setReportEditContent(existing.content ?? '');
+        setReportIsEditing(true);
+      } else {
+        // Create new draft report
+        setSelectedReport({
+          reportDate: today,
+          status: 'draft',
+          content: '',
+        });
+        setReportEditContent('');
+        setReportIsEditing(true);
+      }
+      setReportModalOpen(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to open report.';
+      setReportError(message);
+    }
+  }, [token]);
+
+  const handleSaveReport = useCallback(async () => {
+    if (!selectedReport || !token) return;
+    setReportSaving(true);
+    setReportError('');
+    try {
+      const updated = await api('/daily-reports/by-date', {
+        method: 'PUT',
+        body: JSON.stringify({ date: selectedReport.reportDate, content: reportEditContent }),
+      }) as {
+        id: string;
+        reportDate: string;
+        status: 'draft' | 'in_review' | 'accepted' | 'rejected';
+        content?: string | null;
+      };
+      setSelectedReport(updated);
+      setReportIsEditing(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to save report.';
+      setReportError(message);
+    } finally {
+      setReportSaving(false);
+    }
+  }, [selectedReport, reportEditContent, token]);
+
+  const handleSendReport = useCallback(async () => {
+    if (!selectedReport || !token) return;
+    setReportSending(true);
+    setReportError('');
+    try {
+      const updated = await api('/daily-reports/by-date/send', {
+        method: 'POST',
+        body: JSON.stringify({ date: selectedReport.reportDate, content: reportEditContent }),
+      }) as {
+        id: string;
+        reportDate: string;
+        status: 'draft' | 'in_review' | 'accepted' | 'rejected';
+        content?: string | null;
+      };
+      setSelectedReport(updated);
+      setReportIsEditing(false);
+      setReportModalOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to send report.';
+      setReportError(message);
+    } finally {
+      setReportSending(false);
+    }
+  }, [selectedReport, reportEditContent, token]);
+
   return (
     <>
     <main className="min-h-screen w-full bg-gray-100 text-slate-900">
@@ -2035,8 +2150,8 @@ export default function Page() {
                   </div>
                   <div
                     className={`relative rounded-2xl border-2 p-4 transition-all ${
-                      jdSelectionMode 
-                        ? "border-emerald-400 bg-emerald-50/50 ring-4 ring-emerald-400/20" 
+                      jdSelectionMode
+                        ? "border-slate-200 bg-slate-50/50"
                         : "border-slate-200 bg-slate-50/50"
                     }`}
                   >
@@ -2107,7 +2222,11 @@ export default function Page() {
                       </div>
                     </div>
                   </div>
-                  <div className="relative min-h-[420px] h-[70vh] max-h-[80vh] overflow-hidden bg-gradient-to-br from-white via-slate-50 to-slate-100">
+                  <div
+                    className={`relative min-h-[420px] h-[70vh] max-h-[80vh] overflow-hidden rounded-3xl bg-gradient-to-br from-white via-slate-50 to-slate-100 transition-shadow duration-300 ${
+                      jdSelectionMode ? "z-50 ring-2 ring-emerald-400 jd-border-animate" : ""
+                    }`}
+                  >
                 {streamFrame ? (
                   <div className="h-full w-full overflow-auto bg-white">
                     <img
@@ -2742,7 +2861,139 @@ export default function Page() {
             </div>
         </div>
       )}
+      {user && (user.role === "ADMIN" || user.role === "MANAGER" || user.role === "BIDDER") ? (
+        <button
+          type="button"
+          onClick={handleCreateReport}
+          style={{
+            borderRadius: '9999px',
+            transition: 'all 0.3s ease-in-out, border-radius 0.3s ease-in-out, background-color 0.3s ease-in-out',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderRadius = '1rem';
+            e.currentTarget.style.backgroundColor = '#f59e0b';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderRadius = '9999px';
+            e.currentTarget.style.backgroundColor = '#f97316';
+          }}
+          className="fixed right-6 bottom-24 z-50 group flex items-center justify-center h-10 bg-[#f97316] text-white shadow-[0_10px_25px_-16px_rgba(249,115,22,0.8)] transition-all duration-300 ease-in-out hover:shadow-[0_15px_35px_-12px_rgba(249,115,22,0.6)] w-10 hover:w-40"
+        >
+          <span className="group-hover:opacity-0 group-hover:scale-75 transition-all duration-300 text-xl font-light">
+            +
+          </span>
+          <span className="absolute opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 text-xs font-semibold uppercase tracking-[0.18em] whitespace-nowrap">
+            Add Report
+          </span>
+        </button>
+      )}
     </main>
+    {reportModalOpen && selectedReport ? (
+      <>
+        <div
+          className="fixed inset-0 top-[57px] z-30 bg-slate-900/40"
+          onClick={() => setReportModalOpen(false)}
+        />
+        <div
+          className={`fixed top-[57px] right-0 z-40 h-[calc(100vh-57px)] w-full max-w-2xl transform border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 ${
+            reportModalOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
+          <div className="flex h-full flex-col overflow-y-auto">
+            <section className="p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Report details</p>
+                  <h2 className="text-lg font-semibold text-slate-900 mt-1">{formatDateLabel(selectedReport.reportDate)}</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                      selectedReport.status === 'draft' ? 'border border-amber-200 bg-amber-50 text-amber-700' :
+                      selectedReport.status === 'in_review' ? 'border border-sky-200 bg-sky-50 text-sky-700' :
+                      selectedReport.status === 'accepted' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' :
+                      'border border-rose-200 bg-rose-50 text-rose-700'
+                    }`}
+                  >
+                    {selectedReport.status === 'draft' ? 'Draft' :
+                     selectedReport.status === 'in_review' ? 'In Review' :
+                     selectedReport.status === 'accepted' ? 'Accepted' : 'Rejected'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setReportModalOpen(false)}
+                    className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition"
+                    title="Close"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-2">
+                  <FileText className="w-3.5 h-3.5" />
+                  Daily report
+                </label>
+                {reportIsEditing ? (
+                  <textarea
+                    value={reportEditContent}
+                    onChange={(e) => setReportEditContent(e.target.value)}
+                    placeholder="Write a short update for the day..."
+                    className="min-h-[200px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm outline-none ring-1 ring-transparent focus:ring-slate-300"
+                  />
+                ) : (
+                  <div className="max-h-[320px] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap">
+                    {selectedReport.content?.trim() || 'No report content.'}
+                  </div>
+                )}
+              </div>
+
+              {reportError ? (
+                <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {reportError}
+                </div>
+              ) : null}
+
+              {reportIsEditing && selectedReport.status !== 'accepted' ? (
+                <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReportIsEditing(false);
+                      setReportEditContent(selectedReport.content ?? '');
+                      setReportError('');
+                    }}
+                    className="flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-xs text-slate-700 hover:bg-slate-100"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveReport}
+                    disabled={reportSaving || reportSending}
+                    className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {reportSaving ? 'Saving...' : 'Save draft'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSendReport}
+                    disabled={reportSaving || reportSending}
+                    className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    {reportSending ? 'Submitting...' : 'Submit for review'}
+                  </button>
+                </div>
+              ) : null}
+            </section>
+          </div>
+        </div>
+      </>
+    ) : null}
     </>
   );
 }

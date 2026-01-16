@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Ban, X, Check, Users } from "lucide-react";
 import { api } from "../../../lib/api";
@@ -12,6 +13,7 @@ const roles = ["ADMIN", "MANAGER", "BIDDER", "OBSERVER"] as const;
 export default function AdminUsersPage() {
   const router = useRouter();
   const { user, token, loading } = useAuth();
+  const modalRoot = typeof document !== "undefined" ? document.body : null;
   const [users, setUsers] = useState<ClientUser[]>([]);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -252,8 +254,9 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
-        {confirmOpen && pendingAction && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+        {modalRoot && confirmOpen && pendingAction
+          ? createPortal(
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
             <div
               className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
@@ -297,7 +300,8 @@ export default function AdminUsersPage() {
               </div>
             </div>
           </div>
-        )}
+          , modalRoot)
+          : null}
         </div>
       </div>
     </AdminShell>

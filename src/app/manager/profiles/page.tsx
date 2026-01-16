@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type MouseEventHandler,
 } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Pencil, Save, XCircle, X, UserPlus, UserMinus, Download, Settings, Eye, FileJson, Plus, Check, Trash2, Search, Users } from "lucide-react";
 import { API_BASE, api } from "../../../lib/api";
@@ -132,6 +133,7 @@ const srOnly = "absolute -m-px h-px w-px overflow-hidden whitespace-nowrap borde
 export default function ManagerProfilesPage() {
   const router = useRouter();
   const { user, token, loading } = useAuth();
+  const modalRoot = typeof document !== "undefined" ? document.body : null;
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -1999,8 +2001,9 @@ export default function ManagerProfilesPage() {
               </div>
             ) : null}
 
-            {confirmAssignOpen && selectedProfile && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+            {modalRoot && confirmAssignOpen && selectedProfile
+              ? createPortal(
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
                 <div
                   className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
@@ -2043,10 +2046,12 @@ export default function ManagerProfilesPage() {
                   </div>
                 </div>
               </div>
-            )}
+              , modalRoot)
+              : null}
 
-            {confirmSaveSectionOpen && pendingSectionKey && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+            {modalRoot && confirmSaveSectionOpen && pendingSectionKey
+              ? createPortal(
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
                 <div
                   className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
@@ -2087,10 +2092,12 @@ export default function ManagerProfilesPage() {
                   </div>
                 </div>
               </div>
-            )}
+              , modalRoot)
+              : null}
 
-            {confirmCancelSectionOpen && pendingSectionKey && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+            {modalRoot && confirmCancelSectionOpen && pendingSectionKey
+              ? createPortal(
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
                 <div
                   className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
@@ -2130,10 +2137,12 @@ export default function ManagerProfilesPage() {
                   </div>
                 </div>
               </div>
-            )}
+              , modalRoot)
+              : null}
 
-            {confirmSaveBaseResumeOpen && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+            {modalRoot && confirmSaveBaseResumeOpen
+              ? createPortal(
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
                 <div
                   className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
@@ -2173,10 +2182,12 @@ export default function ManagerProfilesPage() {
                   </div>
                 </div>
               </div>
-            )}
+              , modalRoot)
+              : null}
 
-            {confirmCancelBaseResumeOpen && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+            {modalRoot && confirmCancelBaseResumeOpen
+              ? createPortal(
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
                 <div
                   className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
@@ -2212,10 +2223,12 @@ export default function ManagerProfilesPage() {
                   </div>
                 </div>
               </div>
-            )}
+              , modalRoot)
+              : null}
 
-            {confirmDeleteOpen && selectedProfile && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+            {modalRoot && confirmDeleteOpen && selectedProfile
+              ? createPortal(
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
                 <div
                   className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
                   onClick={(event) => event.stopPropagation()}
@@ -2258,7 +2271,8 @@ export default function ManagerProfilesPage() {
                   </div>
                 </div>
               </div>
-            )}
+              , modalRoot)
+              : null}
           </div>
 
           {addOpen && (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Pencil, Save, XCircle, Plus, X, Check, Eye, Trash2, FileCode } from "lucide-react";
 import { api } from "../../../lib/api";
@@ -112,6 +113,7 @@ const EMPTY_PREVIEW_HTML = `<!doctype html>
 export default function ManagerResumeTemplatesPage() {
   const router = useRouter();
   const { user, token, loading } = useAuth();
+  const modalRoot = typeof document !== "undefined" ? document.body : null;
   const [templates, setTemplates] = useState<ResumeTemplate[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<EditorMode>("view");
@@ -644,8 +646,9 @@ ${rendered}
           </div>
         )}
 
-        {confirmDeleteOpen && pendingDeleteId && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+        {modalRoot && confirmDeleteOpen && pendingDeleteId
+          ? createPortal(
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
             <div
               className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
@@ -682,10 +685,12 @@ ${rendered}
               </div>
             </div>
           </div>
-        )}
+          , modalRoot)
+          : null}
 
-        {confirmSaveOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+        {modalRoot && confirmSaveOpen
+          ? createPortal(
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
             <div
               className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
@@ -721,10 +726,12 @@ ${rendered}
               </div>
             </div>
           </div>
-        )}
+          , modalRoot)
+          : null}
 
-        {confirmCancelOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 py-6">
+        {modalRoot && confirmCancelOpen
+          ? createPortal(
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6">
             <div
               className="w-full max-w-md rounded-3xl border-2 border-amber-200 bg-amber-50 p-6 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
@@ -755,7 +762,8 @@ ${rendered}
               </div>
             </div>
           </div>
-        )}
+          , modalRoot)
+          : null}
       </div>
       </div>
     </ManagerShell>

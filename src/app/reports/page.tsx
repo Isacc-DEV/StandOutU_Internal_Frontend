@@ -294,6 +294,40 @@ export default function ReportsPage() {
     void loadAttachments(report.id);
   }, [loadAttachments]);
 
+  const handleCreateNewReport = useCallback(async () => {
+    const today = toDateKey(new Date());
+    setActionError('');
+    try {
+      // Try to fetch existing report for today
+      const existing = await api<DailyReport>(`/daily-reports/by-date?date=${today}`).catch(() => null);
+      
+      if (existing) {
+        setSelectedReport(existing);
+        setEditContent(existing.content ?? '');
+        setIsEditing(true);
+        setModalOpen(true);
+        await loadAttachments(existing.id);
+      } else {
+        // Create new draft report
+        setSelectedReport({
+          id: '',
+          userId: user?.id || '',
+          reportDate: today,
+          status: 'draft',
+          content: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        setEditContent('');
+        setIsEditing(true);
+        setModalOpen(true);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to open report.';
+      setActionError(message);
+    }
+  }, [user, loadAttachments]);
+
   const handleSave = useCallback(async () => {
     if (!selectedReport || !isEditing) return;
     const isLocked = selectedReport.status === 'accepted';
@@ -1050,6 +1084,30 @@ export default function ReportsPage() {
         </div>
         </>
       ) : null}
+      <button
+        type="button"
+        onClick={handleCreateNewReport}
+        style={{
+          borderRadius: '9999px',
+          transition: 'all 0.3s ease-in-out, border-radius 0.3s ease-in-out, background-color 0.3s ease-in-out',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderRadius = '1rem';
+          e.currentTarget.style.backgroundColor = '#f59e0b';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderRadius = '9999px';
+          e.currentTarget.style.backgroundColor = '#f97316';
+        }}
+        className="fixed right-6 bottom-8 z-50 group flex items-center justify-center h-10 bg-[#f97316] text-white shadow-[0_10px_25px_-16px_rgba(249,115,22,0.8)] transition-all duration-300 ease-in-out hover:shadow-[0_15px_35px_-12px_rgba(249,115,22,0.6)] w-10 hover:w-40"
+      >
+        <span className="group-hover:opacity-0 group-hover:scale-75 transition-all duration-300 text-xl font-light">
+          +
+        </span>
+        <span className="absolute opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 text-xs font-semibold uppercase tracking-[0.18em] whitespace-nowrap">
+          Add Report
+        </span>
+      </button>
     </main>
   );
 }
