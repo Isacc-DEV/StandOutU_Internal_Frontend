@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Pencil, Trash2, Ban, X, Check, Users } from "lucide-react";
 import { api } from "../../../lib/api";
 import { ClientUser } from "../../../lib/auth";
@@ -167,9 +168,19 @@ export default function AdminUsersPage() {
                 return (
                   <div key={u.id} className="grid grid-cols-6 items-center px-4 py-3 text-sm text-slate-800">
                     <div className="flex items-center">
-                      <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-900 text-xs font-semibold text-white">
+                      <div className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-900 text-xs font-semibold text-white">
                         {hasAvatar ? (
-                          <img src={u.avatarUrl!} alt={`${u.userName} avatar`} className="h-full w-full object-cover" />
+                          (u.avatarUrl!.startsWith('data:') || u.avatarUrl!.startsWith('blob:')) ? (
+                            <img src={u.avatarUrl!} alt={`${u.userName} avatar`} className="h-full w-full object-cover" />
+                          ) : (
+                            <Image
+                              src={u.avatarUrl!}
+                              alt={`${u.userName} avatar`}
+                              fill
+                              className="object-cover"
+                              unoptimized
+                            />
+                          )
                         ) : (
                           initials
                         )}

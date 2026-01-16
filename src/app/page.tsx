@@ -1,5 +1,6 @@
 'use client';
 import Link from "next/link";
+import Image from "next/image";
 import TopNav from "../components/TopNav";
 import { FileText, Sparkles, LayoutDashboard, Link2, Users, Calendar, Target, Eye, Heart, Mail, MessageCircle, Phone, Linkedin } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -94,13 +95,16 @@ export default function Page() {
                 className={`absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out ${
                   index === currentImageIndex ? 'opacity-100 z-10' : 'opacity-0 z-0'
                 }`}
-                style={{
-                  backgroundImage: `url(${image})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat',
-                }}
-              />
+              >
+                <Image
+                  src={image}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  priority={index === 0}
+                  unoptimized
+                />
+              </div>
             ))}
             {/* Overlay for better text readability */}
             <div className="absolute inset-0 bg-[#0b1224]/70 z-10" />
@@ -140,10 +144,12 @@ export default function Page() {
                     key={index}
                     className="group rounded-2xl border border-white/10 bg-[#111a32] p-6 transition hover:border-[#6366f1]/50 hover:shadow-[0_8px_30px_rgba(99,102,241,0.12)]"
                   >
-                    <div className="mb-5 h-64  w-full overflow-hidden rounded-xl border border-white/5 bg-[#0f162b]">
-                      <div
-                        className="h-full w-full bg-cover bg-center transition duration-500 group-hover:scale-105"
-                        style={{ backgroundImage: `url(${feature.image})` }}
+                    <div className="relative mb-5 h-64 w-full overflow-hidden rounded-xl border border-white/5 bg-[#0f162b]">
+                      <Image
+                        src={feature.image}
+                        alt={feature.title}
+                        fill
+                        className="object-cover transition duration-500 group-hover:scale-105"
                       />
                     </div>
                     <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#6366f1]/20 text-[#6366f1] transition group-hover:bg-[#6366f1]/30">
@@ -163,17 +169,14 @@ export default function Page() {
           {/* Hero Section */}
           <div className="relative overflow-hidden border-b border-white/5">
             {/* Background Image */}
-            <div className=" inset-0 z-0 w-full h-auto">
-              <img
+            <div className="relative inset-0 z-0 w-full h-auto">
+              <Image
                 src="/images/hero-background4.png"
                 alt="Hero background"
-                className="inset-0 w-full h-auto object-cover"
-                style={{
-                  backgroundImage: 'url(/images/hero-background4.png)',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat',
-                }}
+                width={1920}
+                height={1080}
+                className="w-full h-auto object-cover"
+                priority
               />
               {/* Overlay for better text readability */}
               <div className="absolute inset-0 bg-[#0b1224]/70 z-10" />
@@ -217,22 +220,24 @@ export default function Page() {
                       </p>
                     </div>
                   </div>
-                  <div className="h-64 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#111a32] md:h-80">
-                    <img
+                  <div className="relative h-64 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#111a32] md:h-80">
+                    <Image
                       src="/images/64fd563f-a16b-4245-bc71-1f68264e6931.png"
                       alt="Our Mission"
-                      className="h-full w-full object-cover"
+                      fill
+                      className="object-cover"
                     />
                   </div>
                 </div>
 
                 {/* Vision Section */}
                 <div className="grid gap-8 md:grid-cols-[1fr_1fr] md:items-center">
-                  <div className="h-64 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#111a32] md:h-80">
-                    <img
+                  <div className="relative h-64 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#111a32] md:h-80">
+                    <Image
                       src="/images/c4ba8a6a-9c59-43ec-aa67-fddeae89febf.png"
                       alt="Our Vision"
-                      className="h-full w-full object-cover"
+                      fill
+                      className="object-cover"
                     />
                   </div>
                   <div>
@@ -379,10 +384,12 @@ export default function Page() {
                       <div className="relative mb-4 flex items-center justify-center h-28">
                         <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#6366f1]/40 to-[#8b5cf6]/40 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 scale-150" />
                         <div className="relative h-16 w-16 group-hover:h-28 group-hover:w-28 rounded-full ring-2 group-hover:ring-4 ring-white/10 group-hover:ring-[#6366f1]/50 transition-all duration-300 overflow-hidden">
-                          <img
+                          <Image
                             src={member.photo}
                             alt={member.name}
-                            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-16 w-16 group-hover:h-28 group-hover:w-28 object-cover rounded-full transition-all duration-300 origin-center"
+                            fill
+                            className="object-cover rounded-full transition-all duration-300 origin-center"
+                            unoptimized
                           />
                         </div>
                       </div>

@@ -1,5 +1,6 @@
 import { ChangeEvent, useRef, useState, useEffect } from 'react';
 import { Save, XCircle } from 'lucide-react';
+import Image from 'next/image';
 import type { CommunityMessage } from './types';
 import { cn } from './utils';
 import { EmojiPicker, parseEmojiShortcuts, getEmojiPreview } from './EmojiPicker';
@@ -142,11 +143,23 @@ export function MessageInput({
             {selectedFiles.map((file, idx) => (
               <div key={idx} className="relative flex-shrink-0">
                 {file.type.startsWith('image/') && previewUrls[idx] ? (
-                  <img
-                    src={previewUrls[idx]}
-                    alt={file.name}
-                    className="h-20 w-20 rounded-lg object-cover border border-slate-200"
-                  />
+                  (previewUrls[idx].startsWith('data:') || previewUrls[idx].startsWith('blob:')) ? (
+                    <img
+                      src={previewUrls[idx]}
+                      alt={file.name}
+                      className="h-20 w-20 rounded-lg object-cover border border-slate-200"
+                    />
+                  ) : (
+                    <div className="relative h-20 w-20 rounded-lg border border-slate-200 overflow-hidden">
+                      <Image
+                        src={previewUrls[idx]}
+                        alt={file.name}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </div>
+                  )
                 ) : (
                   <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white">
                     <div className="text-center">

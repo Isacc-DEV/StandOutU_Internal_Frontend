@@ -1,5 +1,6 @@
 import { useRef, useEffect, CSSProperties } from "react";
 import { Check, CheckCheck } from "lucide-react";
+import Image from "next/image";
 import type {
   CommunityMessage,
   TypingIndicator,
@@ -188,11 +189,25 @@ export function MessageList({
                     {message.attachments.map((att) => (
                       <div key={att.id}>
                         {att.mimeType.startsWith("image/") ? (
-                          <img
-                            src={att.fileUrl}
-                            alt={att.fileName}
-                            className="max-w-sm w-auto h-auto rounded"
-                          />
+                          (att.fileUrl.startsWith('data:') || att.fileUrl.startsWith('blob:')) ? (
+                            <img
+                              src={att.fileUrl}
+                              alt={att.fileName}
+                              className="max-w-sm w-auto h-auto rounded"
+                            />
+                          ) : (
+                            <div className="relative max-w-sm w-auto h-auto rounded">
+                              <Image
+                                src={att.fileUrl}
+                                alt={att.fileName}
+                                width={384}
+                                height={384}
+                                className="rounded"
+                                style={{ width: 'auto', height: 'auto' }}
+                                unoptimized
+                              />
+                            </div>
+                          )
                         ) : (
                           <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
                             <div className="flex h-16 w-16 items-center justify-center rounded bg-slate-100 text-xs text-slate-600">

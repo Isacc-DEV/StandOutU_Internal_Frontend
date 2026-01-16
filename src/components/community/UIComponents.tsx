@@ -1,3 +1,5 @@
+import Image from 'next/image';
+
 type SectionHeaderProps = {
   title: string;
   count?: number;
@@ -51,7 +53,7 @@ export function AvatarBubble({ name, active, avatarUrl }: AvatarBubbleProps) {
   const hasAvatar = Boolean(cleanedAvatar) && cleanedAvatar?.toLowerCase() !== 'nope';
   return (
     <span
-      className={`flex h-7 w-7 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold ${
+      className={`flex h-7 w-7 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold relative ${
         hasAvatar
           ? 'bg-slate-900/10'
           : active
@@ -60,7 +62,17 @@ export function AvatarBubble({ name, active, avatarUrl }: AvatarBubbleProps) {
       }`}
     >
       {hasAvatar ? (
-        <img src={cleanedAvatar} alt={`${name} avatar`} className="h-full w-full object-cover" />
+        (cleanedAvatar.startsWith('data:') || cleanedAvatar.startsWith('blob:')) ? (
+          <img src={cleanedAvatar} alt={`${name} avatar`} className="h-full w-full object-cover" />
+        ) : (
+          <Image
+            src={cleanedAvatar}
+            alt={`${name} avatar`}
+            fill
+            className="object-cover"
+            unoptimized
+          />
+        )
       ) : (
         initials || 'DM'
       )}

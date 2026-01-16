@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Home, Info, LayoutDashboard, Link2, Users, Calendar, CheckSquare, FileText, UserCheck, Shield } from 'lucide-react';
 import { clearAuth } from '../lib/auth';
@@ -514,10 +515,13 @@ export default function TopNav() {
       <div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-4 py-3 text-sm">
         <div className="flex items-center">
           <Link href="/" className="flex items-center">
-            <img 
+            <Image 
               src="/logo.svg" 
               alt="StandOutU Logo" 
+              width={120}
+              height={32}
               className="h-8 w-auto"
+              priority
             />
           </Link>
         </div>
@@ -686,9 +690,19 @@ export default function TopNav() {
                 className="relative flex items-center rounded-full bg-white/10 p-1 text-xs text-white transition hover:bg-white/20"
               >
                 <span className="relative flex h-7 w-7 items-center justify-center">
-                  <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-white/15 text-[9px] font-semibold text-white">
+                  <span className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-white/15 text-[9px] font-semibold text-white">
                     {hasAvatar ? (
-                      <img src={avatarUrl} alt={`${user.userName} avatar`} className="h-full w-full object-cover" />
+                      (avatarUrl.startsWith('data:') || avatarUrl.startsWith('blob:')) ? (
+                        <img src={avatarUrl} alt={`${user.userName} avatar`} className="h-full w-full object-cover" />
+                      ) : (
+                        <Image
+                          src={avatarUrl}
+                          alt={`${user.userName} avatar`}
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                      )
                     ) : (
                       initials
                     )}

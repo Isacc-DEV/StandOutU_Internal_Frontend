@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Pencil, Save, XCircle, Users, ChevronDown, TrendingUp, Clock, AlertCircle, CheckCircle2, Calendar, Target, BarChart3, UserCheck } from 'lucide-react';
 import TopNav from '../../components/TopNav';
@@ -2003,11 +2004,23 @@ export default function TasksPage() {
                           className="flex items-start gap-3"
                         >
                           {avatarUrl ? (
-                            <img
-                              src={avatarUrl}
-                              alt={displayName}
-                              className="h-9 w-9 rounded-full object-cover"
-                            />
+                            (avatarUrl.startsWith('data:') || avatarUrl.startsWith('blob:')) ? (
+                              <img
+                                src={avatarUrl}
+                                alt={displayName}
+                                className="h-9 w-9 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="relative h-9 w-9 rounded-full overflow-hidden">
+                                <Image
+                                  src={avatarUrl}
+                                  alt={displayName}
+                                  fill
+                                  className="object-cover rounded-full"
+                                  unoptimized
+                                />
+                              </div>
+                            )
                           ) : (
                             <div
                               className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600"

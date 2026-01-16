@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import TopNav from '../../components/TopNav';
 import { api } from '../../lib/api';
 import { type ClientUser, saveAuth } from '../../lib/auth';
@@ -339,11 +340,21 @@ export default function ProfilePage() {
                         aria-label="Upload new avatar"
                       >
                         {hasAvatar ? (
-                          <img
-                            src={displayAvatarUrl}
-                            alt={`${user.userName} avatar`}
-                            className="h-full w-full object-cover"
-                          />
+                          (displayAvatarUrl.startsWith('data:') || displayAvatarUrl.startsWith('blob:')) ? (
+                            <img
+                              src={displayAvatarUrl}
+                              alt={`${user.userName} avatar`}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <Image
+                              src={displayAvatarUrl}
+                              alt={`${user.userName} avatar`}
+                              fill
+                              className="object-cover"
+                              unoptimized
+                            />
+                          )
                         ) : (
                           initials
                         )}
