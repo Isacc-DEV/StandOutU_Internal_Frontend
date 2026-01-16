@@ -2277,7 +2277,7 @@ export default function ManagerProfilesPage() {
 
           {addOpen && (
             <div
-              className="fixed top-0 right-0 z-50 h-full w-full max-w-2xl transform border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300"
+              className="fixed top-[57px] right-0 z-50 h-[calc(100vh-57px)] w-full max-w-2xl transform border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300"
             >
               <div className="flex h-full flex-col overflow-y-auto p-6">
                 <div className="flex items-start justify-between gap-4 mb-6">
