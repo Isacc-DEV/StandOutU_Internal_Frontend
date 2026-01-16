@@ -327,73 +327,46 @@ export default function Page() {
                     name: "Isacc Wang",
                     role: "CEO & Founder",
                     photo: "/images/aea7df34-be01-48a6-b385-67e0bdc6670a.png",
-                    email: "sarah.johnson@standoutu.com",
-                    phone: "+1 (555) 123-4567",
-                    linkedin: "linkedin.com/in/sarahjohnson"
                   },
                   {
                     name: "Rohail Aman",
                     role: "CTO & Co-Founder",
                     photo: "/images/8252b997-7e81-406a-aaf5-1bd532ffa20d.png",
-                    email: "michael.chen@standoutu.com",
-                    phone: "+1 (555) 234-5678",
-                    linkedin: "linkedin.com/in/michaelchen"
                   },
                   {
                     name: "James Wang",
                     role: "Lead Engineer & Co-Founder",
                     photo: "/images/1868fb7c-134a-48b2-8853-31e32d2e7052.png",
-                    email: "emily.rodriguez@standoutu.com",
-                    phone: "+1 (555) 345-6789",
-                    linkedin: "linkedin.com/in/emilyrodriguez"
                   },
                   {
                     name: "Amano Jun",
                     role: "Frontend Developer & UI/UX Designer",
                     photo: "/images/8291bc18-10e0-14ef-ad31-ef88b01.png",
-                    email: "david.kim@standoutu.com",
-                    phone: "+1 (555) 456-7890",
-                    linkedin: "linkedin.com/in/davidkim"
                   },
                   {
                     name: "Muneer",
                     role: "Account Manager",
                     photo: "images/ddd7aee4-b22c-431b-be31-81d250a0a4ee.png",
-                    email: "jessica.martinez@standoutu.com",
-                    phone: "+1 (555) 567-8901",
-                    linkedin: "linkedin.com/in/jessicamartinez"
                   },
                   {
                     name: "Sabeela",
                     role: "HR Manager",
                     photo: "images/d851bc17-16d0-42bf-ae37-af97d077d760.png",
-                    email: "james.wilson@standoutu.com",
-                    phone: "+1 (555) 678-9012",
-                    linkedin: "linkedin.com/in/jameswilson"
                   },
                   {
                     name: "Jolain",
                     role: "Marketing Manager",
                     photo: "images/82abfafa-e512-453b-82d9-ec2ddebf0c3a.png",
-                    email: "james.wilson@standoutu.com",
-                    phone: "+1 (555) 678-9012",
-                    linkedin: "linkedin.com/in/jameswilson"
                   },
                   {
                     name: "Sam",
                     role: "Bidding Manager",
                     photo: "images/57d18289-cd19-4cb2-8c95-b84049c7c37d.png",
-                    email: "james.wilson@standoutu.com",
-                    phone: "+1 (555) 678-9012",
-                    linkedin: "linkedin.com/in/jameswilson"
                   },
                   {
                     name: "Aftab",
                     role: "Business Developer",
                     photo: "images/a3fe482a-c24c-aa23-b221-77ae290fa9d33.png",
-                    email: "james.wilson@standoutu.com",
-                    phone: "+1 (555) 678-9012",
-                    linkedin: "linkedin.com/in/jameswilson"
                   }
                 ].map((member, index) => (
                   <div
@@ -411,31 +384,6 @@ export default function Page() {
                     </div>
                     <h3 className="mb-1 text-center text-xl font-semibold">{member.name}</h3>
                     <p className="mb-4 text-center text-sm text-[#6366f1]">{member.role}</p>
-                    <div className="space-y-2">
-                      <a
-                        href={`mailto:${member.email}`}
-                        className="flex items-center gap-2 text-sm text-slate-300 transition hover:text-white"
-                      >
-                        <Mail className="h-4 w-4" />
-                        <span className="truncate">{member.email}</span>
-                      </a>
-                      <a
-                        href={`tel:${member.phone}`}
-                        className="flex items-center gap-2 text-sm text-slate-300 transition hover:text-white"
-                      >
-                        <Phone className="h-4 w-4" />
-                        <span>{member.phone}</span>
-                      </a>
-                      <a
-                        href={`https://${member.linkedin}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-slate-300 transition hover:text-white"
-                      >
-                        <Linkedin className="h-4 w-4" />
-                        <span className="truncate">{member.linkedin}</span>
-                      </a>
-                    </div>
                   </div>
                 ))}
               </div>
