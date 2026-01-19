@@ -1,7 +1,7 @@
 'use client';
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, UserCheck, Briefcase, FileText } from "lucide-react";
+import { Users, UserCheck, Briefcase, FileText, BookOpen } from "lucide-react";
 import TopNav from "./TopNav";
 
 export default function ManagerShell({ children }: { children: React.ReactNode }) {
@@ -11,6 +11,7 @@ export default function ManagerShell({ children }: { children: React.ReactNode }
     { href: "/manager/profiles", label: "Profile management", icon: Users },
     { href: "/manager/bidders", label: "Bidder management", icon: UserCheck },
     { href: "/manager/applications", label: "Application management", icon: Briefcase },
+    { href: "/manager/work-book", label: "Work book", icon: BookOpen },
     { href: "/manager/resume-templates", label: "Resume templates", icon: FileText },
   ];
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, Home, Info, LayoutDashboard, Link2, Users, Calendar, CheckSquare, FileText, UserCheck, Shield } from 'lucide-react';
+import { LogOut, Home, Info, LayoutDashboard, Link2, Users, Calendar, CheckSquare, FileText, UserCheck, Shield, BookOpen } from 'lucide-react';
 import { clearAuth } from '../lib/auth';
 import { api, API_BASE } from '../lib/api';
 import { getReportsLastSeen, subscribeNotificationRefresh, triggerNotificationRefresh, useNotificationWebSocket } from '../lib/notifications';
@@ -339,6 +339,7 @@ export default function TopNav() {
   };
 
   const isAdmin = user?.role === 'ADMIN';
+  const isBidder = user?.role === 'BIDDER';
   const isManager = user?.role === 'MANAGER' || isAdmin;
   const reportsHref = isManager ? '/admin/reports' : '/reports';
   const reportsActive =
@@ -564,6 +565,14 @@ export default function TopNav() {
             active={pathname.startsWith('/job-links')}
             icon={Link2}
           />
+          {(isManager || isBidder || isAdmin) && (
+            <NavItem
+              href="/work-book"
+              label="Work book"
+              active={pathname.startsWith('/work-book') || pathname.startsWith('/manager/work-book')}
+              icon={BookOpen}
+            />
+          )}
           <NavItem
             href="/community"
             label="Community"
@@ -734,4 +743,3 @@ export default function TopNav() {
     </header>
   );
 }
-
