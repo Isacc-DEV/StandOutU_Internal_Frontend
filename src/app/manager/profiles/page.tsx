@@ -3499,13 +3499,15 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-function buildResumePdfName(profileName?: string, templateName?: string) {
-  const base = [profileName, templateName, "resume"].filter(Boolean).join("-");
+function buildResumePdfName(profileName?: string) {
+  const shortId = Date.now().toString(36);
+  const core = profileName ? profileName : "resume";
+  const base = core || "resume";
   const cleaned = base
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
-  return cleaned || "resume";
+  return `${cleaned || "resume"}-${shortId}`;
 }
 
 function getPdfFilenameFromHeader(header: string | null) {
