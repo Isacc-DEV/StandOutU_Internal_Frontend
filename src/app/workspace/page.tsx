@@ -1,11 +1,36 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Radio, Keyboard, X, Play, RefreshCw, Download, Sparkles, MessageCircle, Send, Briefcase, ChevronLeft, ChevronRight, Pencil, Paperclip, Trash2 } from "lucide-react";
 import TopNav from "../../components/TopNav";
 import { API_BASE } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
+import ChatWidget from "./components/ChatWidget";
+import JdPreviewModal from "./components/JdPreviewModal";
+import ResumePreviewModal from "./components/ResumePreviewModal";
+import WorkspaceBrowser from "./components/WorkspaceBrowser";
+import WorkspaceSidebar from "./components/WorkspaceSidebar";
+import type {
+  DesktopBridge,
+  WebviewHandle,
+  User,
+  BaseInfo,
+  BaseResume,
+  WorkExperience,
+  EducationEntry,
+  Profile,
+  ResumeTemplate,
+  TailorResumeResponse,
+  BulletAugmentation,
+  CompanyBulletMap,
+  ApplicationSession,
+  FillPlan,
+  FillPlanAction,
+  PageFieldCandidate,
+  AutofillResponse,
+  ApplicationPhraseResponse,
+  Metrics,
+} from "./types";
 
 const CONNECT_TIMEOUT_MS = 20000;
 const CHECK_TIMEOUT_MS = 10000;
@@ -21,167 +46,6 @@ const EMPTY_RESUME_PREVIEW = `<!doctype html>
   </div>
 </body>
 </html>`;
-type DesktopBridge = {
-  isElectron?: boolean;
-  openJobWindow?: (url: string) => Promise<{ ok?: boolean; error?: string } | void>;
-};
-
-type WebviewHandle = HTMLElement & {
-  executeJavaScript: (code: string, userGesture?: boolean) => Promise<unknown>;
-  addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
-  removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
-  loadURL?: (url: string) => Promise<void> | void;
-};
-
-type User = {
-  id: string;
-  email: string;
-  userName: string;
-  role: "ADMIN" | "MANAGER" | "BIDDER" | "OBSERVER";
-};
-
-type BaseInfo = {
-  name?: { first?: string; last?: string };
-  contact?: { email?: string; phone?: string; phoneCode?: string; phoneNumber?: string };
-  links?: Record<string, string> & { linkedin?: string };
-  location?: { address?: string; city?: string; state?: string; country?: string; postalCode?: string };
-  career?: { jobTitle?: string; currentCompany?: string; yearsExp?: string | number; desiredSalary?: string };
-  education?: { school?: string; degree?: string; majorField?: string; graduationAt?: string };
-  workAuth?: { authorized?: boolean; needsSponsorship?: boolean };
-  preferences?: Record<string, unknown>;
-  defaultAnswers?: Record<string, string>;
-};
-
-type BaseResume = {
-  Profile?: {
-    name?: string;
-    headline?: string;
-    contact?: {
-      location?: string;
-      email?: string;
-      phone?: string;
-      linkedin?: string;
-    };
-  };
-  summary?: { text?: string };
-  workExperience?: Array<{
-    companyTitle?: string;
-    roleTitle?: string;
-    employmentType?: string;
-    location?: string;
-    startDate?: string;
-    endDate?: string;
-    bullets?: string[];
-  }>;
-  education?: Array<{
-    institution?: string;
-    degree?: string;
-    field?: string;
-    date?: string;
-    coursework?: string[];
-  }>;
-  skills?: { raw?: string[] };
-};
-
-type WorkExperience = NonNullable<BaseResume["workExperience"]>[number];
-type EducationEntry = NonNullable<BaseResume["education"]>[number];
-
-type Profile = {
-  id: string;
-  displayName: string;
-  baseInfo: BaseInfo;
-  baseResume?: BaseResume;
-  baseAdditionalBullets?: Record<string, number>;
-  assignedBidderId?: string;
-};
-
-type ResumeTemplate = {
-  id: string;
-  name: string;
-  description?: string | null;
-  html: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type TailorResumeResponse = {
-  content?: string;
-  parsed?: unknown;
-  provider?: string;
-  model?: string;
-};
-
-type BulletAugmentation = {
-  first_company?: string[];
-  second_company?: string[];
-  other_companies?: Array<{
-    experience_index?: number | string;
-    bullets?: string[];
-  }>;
-};
-
-type CompanyBulletMap = Record<string, string[]>;
-
-type ApplicationSession = {
-  id: string;
-  bidderUserId: string;
-  profileId: string;
-  url: string;
-  status: string;
-  jobContext?: Record<string, unknown>;
-  fillPlan?: FillPlan;
-  startedAt?: string;
-};
-
-type FillPlan = {
-  filled?: { field: string; value: string; confidence?: number }[];
-  suggestions?: { field: string; suggestion: string }[];
-  blocked?: string[];
-  actions?: FillPlanAction[];
-};
-
-type FillPlanAction = {
-  field?: string;
-  field_id?: string;
-  label?: string;
-  selector?: string | null;
-  action?: "fill" | "select" | "check" | "uncheck" | "click" | "upload" | "skip";
-  value?: string;
-  confidence?: number;
-};
-
-type PageFieldCandidate = {
-  field_id?: string;
-  id?: string | null;
-  name?: string | null;
-  label?: string | null;
-  ariaName?: string | null;
-  placeholder?: string | null;
-  questionText?: string | null;
-  type?: string | null;
-  selector?: string | null;
-  locators?: { css?: string; playwright?: string };
-  constraints?: Record<string, number>;
-  required?: boolean;
-};
-
-type AutofillResponse = {
-  fillPlan: FillPlan;
-  pageFields?: PageFieldCandidate[];
-  candidateFields?: PageFieldCandidate[];
-};
-
-type ApplicationPhraseResponse = {
-  phrases: string[];
-};
-
-type Metrics = {
-  tried: number;
-  submitted: number;
-  appliedPercentage: number;
-  monthlyApplied?: number;
-  recent: ApplicationSession[];
-};
 
 async function api(path: string, init?: RequestInit) {
   const token =
@@ -230,21 +94,15 @@ export default function Page() {
   const [user, setUser] = useState<User | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
-  const [url, setUrl] = useState<string>(
-    "https://www.wave.com/en/careers/job/5725498004/?source=LinkedIn"
-  );
-  const [useLlmAutofill, setUseLlmAutofill] = useState(false);
+  const [url, setUrl] = useState<string>("");
   const [applicationPhrases, setApplicationPhrases] = useState<string[]>([]);
   const [checkEnabled, setCheckEnabled] = useState(false);
   const [session, setSession] = useState<ApplicationSession | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [fillPlan, setFillPlan] = useState<FillPlan | null>(null);
   const [capturedFields, setCapturedFields] = useState<PageFieldCandidate[]>([]);
-  const [frameLoaded, setFrameLoaded] = useState(false);
-  const [streamFrame, setStreamFrame] = useState<string>("");
   const [status, setStatus] = useState<string>("Disconnected");
   const [loadingAction, setLoadingAction] = useState<string>("");
-  const [streamConnected, setStreamConnected] = useState(false);
   const [showBaseInfo, setShowBaseInfo] = useState(false);
   const [baseInfoView, setBaseInfoView] = useState<BaseInfo>(() => cleanBaseInfo({}));
   const [webviewStatus, setWebviewStatus] = useState<"idle" | "loading" | "ready" | "failed">("idle");
@@ -254,9 +112,7 @@ export default function Page() {
   const [resumeTemplateId, setResumeTemplateId] = useState("");
   const [resumePreviewOpen, setResumePreviewOpen] = useState(false);
   const [jdPreviewOpen, setJdPreviewOpen] = useState(false);
-  const [jdSelectionMode, setJdSelectionMode] = useState(false);
   const [jdDraft, setJdDraft] = useState("");
-  const [jdCaptureLoading, setJdCaptureLoading] = useState(false);
   const [jdCaptureError, setJdCaptureError] = useState("");
   const [bulletCountByCompany, setBulletCountByCompany] = useState<Record<string, number>>({});
   const [tailorLoading, setTailorLoading] = useState(false);
@@ -276,13 +132,9 @@ export default function Page() {
   const [chatProvider, setChatProvider] = useState<"HUGGINGFACE" | "OPENAI" | "GEMINI">("HUGGINGFACE");
   const chatMessagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
-  const jdSelectionPollRef = useRef<number | null>(null);
-  const jdDraftRef = useRef("");
-  const jdPreviewOpenRef = useRef(false);
-  const jdSelectionModeRef = useRef(false);
+  const handleManualJdInputRef = useRef<() => void>(() => {});
+  const handleAutofillRef = useRef<() => void>(() => {});
   const webviewRef = useRef<WebviewHandle | null>(null);
-  const [showGenerateResumeDropdown, setShowGenerateResumeDropdown] = useState(false);
-  const generateResumeDropdownRef = useRef<HTMLDivElement | null>(null);
   const { token } = useAuth();
   const setWebviewRef = useCallback((node: WebviewHandle | null) => {
     webviewRef.current = node;
@@ -334,46 +186,6 @@ export default function Page() {
     if (!isClient || typeof window === "undefined") return;
     window.localStorage.setItem("smartwork_ai_provider", aiProvider);
   }, [aiProvider, isClient]);
-
-  useEffect(() => {
-    jdDraftRef.current = jdDraft;
-  }, [jdDraft]);
-
-  useEffect(() => {
-    jdPreviewOpenRef.current = jdPreviewOpen;
-  }, [jdPreviewOpen]);
-
-  useEffect(() => {
-    jdSelectionModeRef.current = jdSelectionMode;
-  }, [jdSelectionMode]);
-
-  useEffect(() => {
-    return () => {
-      if (jdSelectionPollRef.current !== null) {
-        window.clearInterval(jdSelectionPollRef.current);
-        jdSelectionPollRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        showGenerateResumeDropdown &&
-        generateResumeDropdownRef.current &&
-        !generateResumeDropdownRef.current.contains(event.target as Node)
-      ) {
-        setShowGenerateResumeDropdown(false);
-      }
-    }
-
-    if (showGenerateResumeDropdown) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }
-  }, [showGenerateResumeDropdown]);
 
   useEffect(() => {
     if (!isClient) return;
@@ -460,6 +272,7 @@ export default function Page() {
   const appliedPct = metrics ? `${metrics.appliedPercentage}%` : "0%";
   const monthlyApplied = metrics?.monthlyApplied ?? 0;
   const baseDraft = cleanBaseInfo(baseInfoView);
+  const phoneCombined = formatPhone(baseDraft.contact) || "N/A";
   const normalizedCheckPhrases = useMemo(() => {
     const merged = new Map<string, string>();
     applicationPhrases.forEach((phrase) => {
@@ -501,8 +314,6 @@ export default function Page() {
     setSession(null);
     setFillPlan(null);
     setCapturedFields([]);
-    setStreamFrame("");
-    setStreamConnected(false);
     setCheckEnabled(false);
     setNavigationStarted(false);
     setCanGoBack(false);
@@ -547,41 +358,6 @@ export default function Page() {
     }
   }, [resumeTemplates, resumeTemplateId]);
 
-  const sessionId = session?.id;
-
-  useEffect(() => {
-    if (!sessionId) {
-      setStreamFrame("");
-      setStreamConnected(false);
-      setFrameLoaded(false);
-      setCheckEnabled(false);
-      return;
-    }
-    setStreamConnected(false);
-    setStreamFrame("");
-    setFrameLoaded(false);
-    const base = API_BASE.startsWith("http") ? API_BASE : window.location.origin;
-    const wsBase = base.replace(/^http/i, "ws");
-    const ws = new WebSocket(`${wsBase}/ws/browser/${sessionId}`);
-    ws.onopen = () => setStreamConnected(true);
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data as string);
-        if (msg.type === "frame" && msg.data) {
-          setStreamFrame(`data:image/png;base64,${msg.data}`);
-          setFrameLoaded(true);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    ws.onerror = () => setStreamConnected(false);
-    ws.onclose = () => setStreamConnected(false);
-    return () => {
-      ws.close();
-    };
-  }, [sessionId]);
-
   useEffect(() => {
     setWebviewStatus("idle");
     setCheckEnabled(false);
@@ -598,6 +374,150 @@ export default function Page() {
     setWebviewStatus("loading");
     setCheckEnabled(false);
   }, [browserSrc, isElectron]);
+
+  const handleHotkey = useCallback(
+    (eventLike: {
+      key?: string;
+      code?: string;
+      ctrlKey?: boolean;
+      metaKey?: boolean;
+      shiftKey?: boolean;
+      control?: boolean;
+      shift?: boolean;
+      preventDefault?: () => void;
+    }) => {
+      const keyRaw = (eventLike.key || eventLike.code || "").toString().toLowerCase();
+      const ctrl = Boolean(eventLike.ctrlKey || eventLike.metaKey || eventLike.control);
+      const shift = Boolean(eventLike.shiftKey || eventLike.shift);
+      if (!ctrl || !shift) return;
+      if (keyRaw === "g" || keyRaw === "keyg") {
+        eventLike.preventDefault?.();
+        handleManualJdInputRef.current();
+      } else if (keyRaw === "f" || keyRaw === "keyf") {
+        eventLike.preventDefault?.();
+        handleAutofillRef.current();
+      }
+    },
+    []
+  );
+
+  // Global hotkeys across the renderer
+  useEffect(() => {
+    if (!isClient) return;
+    const handleKeyDown = (event: KeyboardEvent) => handleHotkey(event);
+    window.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [isClient, handleHotkey]);
+
+  const installSelectionCache = useCallback(async () => {
+    const view = webviewRef.current;
+    if (!view) return;
+    const script = `(() => {
+      try {
+        if (window.__smartworkSelectionCache) return true;
+        window.__smartworkSelectionCache = true;
+        const update = () => {
+          try {
+            const selection = window.getSelection ? window.getSelection().toString() : '';
+            const text = selection ? selection.trim() : '';
+            if (text) window.__smartworkLastSelection = text;
+          } catch {
+            /* ignore */
+          }
+        };
+        document.addEventListener('mouseup', update);
+        document.addEventListener('keyup', update);
+        const attachFrame = (frame) => {
+          try {
+            const doc = frame.contentDocument;
+            if (!doc) return;
+            doc.addEventListener('mouseup', update);
+            doc.addEventListener('keyup', update);
+          } catch {
+            /* ignore */
+          }
+        };
+        Array.from(document.querySelectorAll('iframe')).forEach(attachFrame);
+        const obs = new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            for (const node of Array.from(m.addedNodes || [])) {
+              if (node && node.tagName && node.tagName.toLowerCase() === 'iframe') {
+                attachFrame(node);
+              }
+            }
+          }
+        });
+        obs.observe(document.documentElement, { childList: true, subtree: true });
+        return true;
+      } catch {
+        return false;
+      }
+    })()`;
+    try {
+      await view.executeJavaScript(script, true);
+    } catch {
+      // ignore selection cache errors
+    }
+  }, []);
+  
+  const installHotkeyBridge = useCallback(async () => {
+    const view = webviewRef.current;
+    if (!view) return;
+    const script = `(() => {
+      try {
+        if (window.__smartworkHotkeysInstalled) return true;
+        window.__smartworkHotkeysInstalled = true;
+        const handler = (e) => {
+          if (!e) return;
+          const key = (e.key || '').toLowerCase();
+          const ctrl = !!(e.ctrlKey || e.metaKey);
+          const shift = !!e.shiftKey;
+          if (!ctrl || !shift) return;
+          if (key !== 'g' && key !== 'f') return;
+          try { e.preventDefault(); } catch {}
+          const payload = { key, ctrl: true, shift: true };
+          try {
+            window.postMessage({ __smartworkHotkey: payload }, '*');
+          } catch { /* ignore */ }
+          try {
+            if (window.parent) {
+              window.parent.postMessage({ __smartworkHotkey: payload }, '*');
+            }
+          } catch { /* ignore */ }
+          try {
+            // Electron guest -> host IPC
+            if (window.ipcRenderer && typeof window.ipcRenderer.sendToHost === 'function') {
+              window.ipcRenderer.sendToHost('smartwork-hotkey', payload);
+            }
+          } catch { /* ignore */ }
+        };
+        document.addEventListener('keydown', handler, true);
+        const frames = Array.from(document.querySelectorAll('iframe'));
+        frames.forEach((frame) => {
+          try {
+            const doc = frame.contentDocument;
+            if (doc) {
+              doc.addEventListener('keydown', handler, true);
+            }
+          } catch {
+            /* ignore */
+          }
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    })()`;
+    try {
+      await view.executeJavaScript(script, true);
+    } catch {
+      // ignore hotkey bridge errors
+    }
+  }, []);
 
   useEffect(() => {
     if (!isElectron || !webviewRef.current || !browserSrc) return;
@@ -620,24 +540,33 @@ export default function Page() {
           // Check if we can go back by trying to access history state
           view.executeJavaScript("window.history.state !== null", true).then((canBack) => {
             setCanGoBack(Boolean(canBack));
-          }).catch(() => {});
+          }).catch(() => { });
         }
-      }).catch(() => {});
+      }).catch(() => { });
     };
     const handleReady = () => {
       setWebviewStatus("ready");
       setCheckEnabled(true);
       checkNavigationState();
+      void installSelectionCache();
+      void installHotkeyBridge();
+      attachWebContentsHotkey();
     };
     const handleDomReady = () => {
       setWebviewStatus("ready");
       setCheckEnabled(true);
       checkNavigationState();
+      void installSelectionCache();
+      void installHotkeyBridge();
+      attachWebContentsHotkey();
     };
     const handleStop = () => {
       setWebviewStatus("ready");
       setCheckEnabled(true);
       checkNavigationState();
+      void installSelectionCache();
+      void installHotkeyBridge();
+      attachWebContentsHotkey();
     };
     const handleFail = () => {
       setWebviewStatus("failed");
@@ -662,6 +591,59 @@ export default function Page() {
         view.setAttribute("src", popup.url);
       }
     };
+    const handleBeforeInput = (event: any) => {
+      const input = event?.input || event;
+      const ctrlKey = Boolean(input?.control || input?.ctrlKey || input?.metaKey);
+      const shiftKey = Boolean(input?.shift || input?.shiftKey);
+      handleHotkey({
+        key: input?.key,
+        code: input?.code,
+        ctrlKey,
+        metaKey: input?.metaKey,
+        shiftKey,
+        control: input?.control,
+        shift: input?.shift,
+        preventDefault: () => event?.preventDefault?.(),
+      });
+    };
+    const handleKeyDownInView = (event: Event) => {
+      const ev = event as unknown as {
+        key?: string;
+        code?: string;
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+        shiftKey?: boolean;
+        control?: boolean;
+        shift?: boolean;
+        preventDefault?: () => void;
+      };
+      handleHotkey(ev);
+    };
+
+    let webContentsCleanup: (() => void) | null = null;
+    const attachWebContentsHotkey = () => {
+      if (webContentsCleanup) return;
+      const wc = (view as any).getWebContents ? (view as any).getWebContents() : null;
+      if (wc && typeof wc.on === "function") {
+        const wcHandler = (_event: unknown, input: { key?: string; code?: string; ctrl?: boolean; control?: boolean; shift?: boolean; meta?: boolean; ctrlKey?: boolean; shiftKey?: boolean; metaKey?: boolean; preventDefault?: () => void }) => {
+          handleHotkey({
+            key: input?.key,
+            code: input?.code,
+            ctrlKey: input?.ctrl ?? input?.control ?? input?.ctrlKey ?? input?.meta,
+            metaKey: input?.meta ?? input?.metaKey,
+            shiftKey: input?.shift ?? input?.shiftKey,
+            control: input?.control,
+            shift: input?.shift,
+            preventDefault: () => input?.preventDefault?.(),
+          });
+        };
+        wc.on("before-input-event", wcHandler);
+        webContentsCleanup = () => {
+          wc.removeListener("before-input-event", wcHandler);
+        };
+      }
+    };
+
     view.addEventListener("dom-ready", handleDomReady);
     view.addEventListener("did-stop-loading", handleStop);
     view.addEventListener("did-finish-load", handleReady);
@@ -670,6 +652,41 @@ export default function Page() {
     view.addEventListener("did-navigate", handleNavigate);
     view.addEventListener("did-navigate-in-page", handleNavigate);
     view.addEventListener("new-window", handleNewWindow);
+    view.addEventListener("before-input-event", handleBeforeInput as unknown as EventListener);
+    view.addEventListener("keydown", handleKeyDownInView as unknown as EventListener, true);
+    const handleIpcMessage = (event: Event) => {
+      const anyEvt = event as unknown as { channel?: string; args?: Array<{ key?: string; ctrl?: boolean; shift?: boolean }> };
+      if (anyEvt.channel !== "smartwork-hotkey") return;
+      const payload = anyEvt.args?.[0];
+      if (!payload) return;
+      handleHotkey({
+        key: payload.key,
+        ctrlKey: payload.ctrl,
+        shiftKey: payload.shift,
+      });
+    };
+    view.addEventListener("ipc-message", handleIpcMessage as unknown as EventListener);
+    const handleConsoleMessage = (evt: Event) => {
+      const anyEvt = evt as unknown as { message?: string };
+      const msg = (anyEvt.message || "").toString();
+      if (msg.includes("__smartwork_hotkey:g")) {
+        handleHotkey({ key: "g", ctrlKey: true, shiftKey: true });
+      } else if (msg.includes("__smartwork_hotkey:f")) {
+        handleHotkey({ key: "f", ctrlKey: true, shiftKey: true });
+      }
+    };
+    view.addEventListener("console-message", handleConsoleMessage as unknown as EventListener);
+    const messageHandler = (evt: MessageEvent) => {
+      const data = evt.data as { __smartworkHotkey?: { key?: string; ctrl?: boolean; shift?: boolean } };
+      if (!data || !data.__smartworkHotkey) return;
+      const payload = data.__smartworkHotkey;
+      handleHotkey({
+        key: payload.key,
+        ctrlKey: payload.ctrl,
+        shiftKey: payload.shift,
+      });
+    };
+    window.addEventListener("message", messageHandler);
     return () => {
       view.removeEventListener("dom-ready", handleDomReady);
       view.removeEventListener("did-stop-loading", handleStop);
@@ -679,8 +696,14 @@ export default function Page() {
       view.removeEventListener("did-navigate", handleNavigate);
       view.removeEventListener("did-navigate-in-page", handleNavigate);
       view.removeEventListener("new-window", handleNewWindow);
+      view.removeEventListener("before-input-event", handleBeforeInput as unknown as EventListener);
+      view.removeEventListener("keydown", handleKeyDownInView as unknown as EventListener, true);
+      view.removeEventListener("ipc-message", handleIpcMessage as unknown as EventListener);
+      view.removeEventListener("console-message", handleConsoleMessage as unknown as EventListener);
+      if (webContentsCleanup) webContentsCleanup();
+      window.removeEventListener("message", messageHandler);
     };
-  }, [isElectron, browserSrc]);
+  }, [isElectron, browserSrc, installSelectionCache, installHotkeyBridge, handleHotkey]);
 
   const collectWebviewText = useCallback(async (): Promise<string> => {
     const view = webviewRef.current;
@@ -1115,6 +1138,31 @@ export default function Page() {
     }
   }, [canGoForward, isElectron]);
 
+  const handleRefresh = useCallback(async () => {
+    if (!navigationStarted) {
+      await handleGo();
+      return;
+    }
+    const view = webviewRef.current;
+    if (isElectron && view) {
+      if (typeof (view as any).reload === "function") {
+        (view as any).reload();
+      } else {
+        view.executeJavaScript("window.location.reload()", true).catch(console.error);
+      }
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const iframe = document.querySelector("iframe");
+    if (iframe?.contentWindow) {
+      try {
+        iframe.contentWindow.location.reload();
+      } catch {
+        console.warn("Cannot refresh iframe due to cross-origin restrictions");
+      }
+    }
+  }, [handleGo, isElectron, navigationStarted]);
+
   async function handleCheck() {
     if (!session) return;
     setLoadingAction("check");
@@ -1202,7 +1250,7 @@ export default function Page() {
       const res = (await api(`/sessions/${session.id}/autofill`, {
         method: "POST",
         body: JSON.stringify({
-          useLlm: useLlmAutofill,
+          useLlm: false,
           pageFields: isDesktop ? pageFields : undefined,
         }),
       })) as AutofillResponse;
@@ -1222,184 +1270,66 @@ export default function Page() {
     }
   }
 
-  const stopJdSelectionPolling = useCallback(() => {
-    if (jdSelectionPollRef.current !== null) {
-      window.clearInterval(jdSelectionPollRef.current);
-      jdSelectionPollRef.current = null;
-    }
-  }, []);
-
-  const startJdSelectionPolling = useCallback(() => {
-    if (jdSelectionPollRef.current !== null) {
-      window.clearInterval(jdSelectionPollRef.current);
-    }
-    jdSelectionPollRef.current = window.setInterval(async () => {
-      if (!jdSelectionModeRef.current) return;
-      const view = webviewRef.current;
-      if (!view) return;
-      try {
-        const result = await view.executeJavaScript(
-          "window.__smartworkSelectionText || ''",
-          true
-        );
-        if (typeof result !== "string") return;
-        const text = result.trim();
-        if (!text) return;
-        if (!jdPreviewOpenRef.current) {
-          if (text !== jdDraftRef.current) {
-            setJdDraft(text);
-          }
-          setJdPreviewOpen(true);
-        }
-      } catch {
-        // ignore selection polling errors
-      }
-    }, 600);
-  }, []);
-
-  const installJdSelectionCapture = useCallback(async () => {
-    const view = webviewRef.current;
-    if (!view) return;
-    const script = `(() => {
-      try {
-        if (window.__smartworkSelectionCapture) return true;
-        window.__smartworkSelectionCapture = true;
-        window.__smartworkSelectionText = window.__smartworkSelectionText || '';
-        const capture = () => {
-          try {
-            const selection = window.getSelection ? window.getSelection().toString() : '';
-            const text = selection ? selection.trim() : '';
-            if (text) window.__smartworkSelectionText = text;
-          } catch {
-            /* ignore */
-          }
-        };
-        document.addEventListener('mouseup', capture);
-        document.addEventListener('keyup', capture);
-
-        const attachFrame = (frame) => {
-          try {
-            const doc = frame.contentDocument;
-            if (!doc) return;
-            doc.addEventListener('mouseup', capture);
-            doc.addEventListener('keyup', capture);
-          } catch {
-            /* ignore */
-          }
-        };
-        Array.from(document.querySelectorAll('iframe')).forEach(attachFrame);
-        const obs = new MutationObserver((mutations) => {
-          for (const m of mutations) {
-            for (const node of Array.from(m.addedNodes || [])) {
-              if (node && node.tagName && node.tagName.toLowerCase() === 'iframe') {
-                attachFrame(node);
-              }
-            }
-          }
-        });
-        obs.observe(document.documentElement, { childList: true, subtree: true });
-        window.__smartworkSelectionClear = () => {
-          try {
-            window.__smartworkSelectionText = '';
-            const sel = window.getSelection && window.getSelection();
-            if (sel && sel.removeAllRanges) sel.removeAllRanges();
-          } catch {
-            /* ignore */
-          }
-        };
-        return true;
-      } catch {
-        return false;
-      }
-    })()`;
-    await view.executeJavaScript(script, true);
-  }, []);
-
-  const clearJdSelection = useCallback(async () => {
-    const view = webviewRef.current;
-    if (!view) return;
-    const script = `(() => {
-      try {
-        if (typeof window.__smartworkSelectionClear === 'function') {
-          window.__smartworkSelectionClear();
-        } else {
-          window.__smartworkSelectionText = '';
-          const sel = window.getSelection && window.getSelection();
-          if (sel && sel.removeAllRanges) sel.removeAllRanges();
-        }
-      } catch {
-        /* ignore */
-      }
-      return true;
-    })()`;
-    await view.executeJavaScript(script, true);
-  }, []);
-
-  async function handleGenerateResume() {
-    setShowGenerateResumeDropdown(false);
-    if (!selectedProfile || !selectedProfileId) {
-      showError("Select a profile before generating a resume.");
-      return;
-    }
-    if (!isElectron) {
-      showError("Generate resume is only available in the desktop app.");
-      return;
-    }
-    if (!webviewRef.current) {
-      showError("Embedded browser is not ready yet. Try again in a moment.");
-      return;
-    }
-    if (webviewStatus === "failed") {
-      showError("Embedded browser failed to load. Try again or open in a browser tab.");
-      return;
-    }
-    setJdSelectionMode(true);
-    jdSelectionModeRef.current = true;
-    setJdPreviewOpen(false);
-    setJdCaptureError("");
-    setJdDraft("");
-    setJdCaptureLoading(true);
+  async function readWebviewSelection() {
+    if (!isElectron || !webviewRef.current) return "";
     try {
-      await clearJdSelection();
-      await installJdSelectionCapture();
-      startJdSelectionPolling();
-    } catch (err) {
-      console.error(err);
-      const message = err instanceof Error ? err.message : "Selection mode failed.";
-      setJdCaptureError(message);
-    } finally {
-      setJdCaptureLoading(false);
+      const script = `(() => {
+        const readSelection = (win) => {
+          try {
+            const sel = win && win.getSelection ? win.getSelection().toString() : '';
+            return sel ? sel.trim() : '';
+          } catch {
+            return '';
+          }
+        };
+        const main = readSelection(window);
+        if (main) return main;
+        const frames = Array.from(document.querySelectorAll('iframe'));
+        for (const frame of frames) {
+          try {
+            const win = frame.contentWindow;
+            const frameSel = readSelection(win);
+            if (frameSel) return frameSel;
+          } catch {
+            /* ignore */
+          }
+        }
+        return window.__smartworkLastSelection || '';
+      })()`;
+      const result = await webviewRef.current.executeJavaScript(script, true);
+      return typeof result === "string" ? result.trim() : "";
+    } catch {
+      return "";
     }
   }
 
-  function handleManualJdInput() {
-    setShowGenerateResumeDropdown(false);
+  async function handleManualJdInput() {
     if (!selectedProfile || !selectedProfileId) {
       showError("Select a profile before generating a resume.");
       return;
     }
-    setJdSelectionMode(false);
-    jdSelectionModeRef.current = false;
     setJdPreviewOpen(true);
     setJdCaptureError("");
     setJdDraft("");
-    setJdCaptureLoading(false);
+    const selection = await readWebviewSelection();
+    if (selection) {
+      setJdDraft(selection);
+    }
   }
+
+  useEffect(() => {
+    handleManualJdInputRef.current = () => {
+      void handleManualJdInput();
+    };
+    handleAutofillRef.current = () => {
+      void handleAutofill();
+    };
+  }, [handleManualJdInput, handleAutofill]);
 
   function handleCancelJd() {
-    stopJdSelectionPolling();
-    setJdSelectionMode(false);
-    jdSelectionModeRef.current = false;
     setJdPreviewOpen(false);
     setJdCaptureError("");
     setJdDraft("");
-  }
-
-  async function handleReselectJd() {
-    setJdCaptureError("");
-    setJdDraft("");
-    setJdPreviewOpen(false);
-    await clearJdSelection();
   }
 
   async function handleConfirmJd() {
@@ -1407,9 +1337,6 @@ export default function Page() {
       setJdCaptureError("Job description is empty.");
       return;
     }
-    stopJdSelectionPolling();
-    setJdSelectionMode(false);
-    jdSelectionModeRef.current = false;
     setResumePreviewOpen(true);
     setJdPreviewOpen(false);
     if (!resumeTemplates.length && !resumeTemplatesLoading) {
@@ -1448,8 +1375,8 @@ export default function Page() {
       const nextResume = isBulletAugmentation(patchCandidate)
         ? applyBulletAugmentation(baseResume, patchCandidate)
         : isCompanyBulletMap(patchCandidate)
-        ? applyCompanyBulletMap(baseResume, patchCandidate)
-        : mergeResumeData(baseResume, normalizeResumePatch(patchCandidate));
+          ? applyCompanyBulletMap(baseResume, patchCandidate)
+          : mergeResumeData(baseResume, normalizeResumePatch(patchCandidate));
       const normalized = normalizeBaseResume(nextResume);
       setTailoredResume(normalized);
       // Save resume_json and job_description for chat
@@ -1514,8 +1441,8 @@ export default function Page() {
       const nextResume = isBulletAugmentation(patchCandidate)
         ? applyBulletAugmentation(baseResume, patchCandidate)
         : isCompanyBulletMap(patchCandidate)
-        ? applyCompanyBulletMap(baseResume, patchCandidate)
-        : mergeResumeData(baseResume, normalizeResumePatch(patchCandidate));
+          ? applyCompanyBulletMap(baseResume, patchCandidate)
+          : mergeResumeData(baseResume, normalizeResumePatch(patchCandidate));
       const normalized = normalizeBaseResume(nextResume);
       setTailoredResume(normalized);
       // Save resume_json and job_description for chat
@@ -1585,13 +1512,13 @@ export default function Page() {
     setChatModalOpen(true);
     setChatMessages([]);
     setChatInput("");
-    
+
     // Restore last generated resume_json and job_description
     if (typeof window !== "undefined") {
       try {
         const savedResumeJson = localStorage.getItem("last_resume_json");
         const savedJobDescription = localStorage.getItem("last_job_description");
-        
+
         if (savedResumeJson && savedJobDescription) {
           const resumeJson = JSON.parse(savedResumeJson);
           // Send initial context
@@ -1623,22 +1550,22 @@ export default function Page() {
 
   async function handleSendChatMessage() {
     if (!chatInput.trim() || chatLoading) return;
-    
+
     const question = chatInput.trim();
     setChatInput("");
     setChatMessages((prev) => [...prev, { role: "user", content: question }]);
     setChatLoading(true);
-    
+
     try {
       // Get saved resume_json and job_description
       let resumeJson: BaseResume | null = null;
       let jobDescription = "";
-      
+
       if (typeof window !== "undefined") {
         try {
           const savedResumeJson = localStorage.getItem("last_resume_json");
           const savedJobDescription = localStorage.getItem("last_job_description");
-          
+
           if (savedResumeJson) {
             resumeJson = JSON.parse(savedResumeJson);
           }
@@ -1649,7 +1576,7 @@ export default function Page() {
           console.error("Failed to load saved data", e);
         }
       }
-      
+
       // Fallback to current state if not in localStorage
       if (!resumeJson && tailoredResume) {
         resumeJson = tailoredResume;
@@ -1657,7 +1584,7 @@ export default function Page() {
       if (!jobDescription && jdDraft.trim()) {
         jobDescription = jdDraft.trim();
       }
-      
+
       if (!jobDescription) {
         setChatMessages((prev) => [
           ...prev,
@@ -1668,19 +1595,19 @@ export default function Page() {
         ]);
         return;
       }
-      
+
       const payload: Record<string, unknown> = {
         resumeJson: resumeJson || {},
         jobDescription,
         question,
         provider: chatProvider,
       };
-      
+
       const response = (await api("/llm/interview-chat", {
         method: "POST",
         body: JSON.stringify(payload),
       })) as { content?: string; provider?: string; model?: string };
-      
+
       setChatMessages((prev) => [
         ...prev,
         {
@@ -1774,980 +1701,105 @@ export default function Page() {
 
   return (
     <>
-    <main className="min-h-screen w-full bg-gray-100 text-slate-900">
-      <TopNav />
-      {jdSelectionMode ? (
-        <div
-          className="fixed inset-0 z-40 cursor-pointer bg-slate-900/65 backdrop-blur-[1px]"
-          onClick={handleCancelJd}
-          aria-hidden="true"
-        />
-      ) : null}
-      <div className="mx-auto w-full min-h-screen pr-4 space-y-4 pt-[57px]">
-        {user ? null : null}
+      <main className="min-h-screen w-full bg-gray-100 text-slate-900">
+        <TopNav />
+        <div className="mx-auto w-full min-h-screen space-y-4 pt-[57px]">
+          {user ? null : null}
 
-        {user ? (
-        <div className="grid gap-4 min-h-screen xl:grid-cols-[280px_1fr]">
-          <section
-            className="flex flex-col gap-2 bg-[#0b1224] text-slate-100"
-            style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
-          >
-            <div className="p-4 space-y-4">
-              <div className="rounded-xl border border-slate-700 p-4 shadow-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
-                      Profile:
-                    </p>
-                  </div>
-
-                  <select
-                    value={selectedProfileId}
-                    onChange={(e) => setSelectedProfileId(e.target.value)}
-                    className="w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-transparent transition focus:border-slate-500 focus:ring-slate-500"
-                  >
-                    {profiles.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-700 p-4 shadow-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">Service</p>
-
-                  <select
-                    value={aiProvider}
-                    onChange={(event) =>
-                      setAiProvider(event.target.value as "OPENAI" | "HUGGINGFACE" | "GEMINI")
-                    }
-                    className="w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-transparent transition focus:border-slate-500 focus:ring-slate-500"
-                  >
-                    <option value="HUGGINGFACE">Hugging Face</option>
-                    <option value="OPENAI">OpenAI</option>
-                    <option value="GEMINI">Gemini</option>
-                  </select>
-                </div>
-                <div className="mt-4 relative" ref={generateResumeDropdownRef}>
-                  <button
-                    onClick={() => setShowGenerateResumeDropdown(!showGenerateResumeDropdown)}
-                    disabled={!selectedProfileId || tailorLoading || jdCaptureLoading || jdSelectionMode}
-                    className="flex items-center justify-center gap-2 w-full rounded-xl bg-indigo-400 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                    title={jdCaptureLoading ? "Reading JD..." : tailorLoading ? "Generating..." : "Generate Resume"}
-                  >
-                    {jdCaptureLoading ? (
-                      <>
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                        <span>Reading JD...</span>
-                      </>
-                    ) : tailorLoading ? (
-                      <>
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="w-5 h-5" />
-                      </>
-                    )}
-                    <span>
-                      {jdCaptureLoading
-                        ? "Reading JD..."
-                        : tailorLoading
-                        ? "Generating..."
-                        : "Generate Resume"}
-                    </span>
-                  </button>
-                  {showGenerateResumeDropdown && (
-                    <div
-                      className="absolute top-full left-0 right-0 mt-2 rounded-xl border border-slate-600 bg-slate-800 shadow-lg z-50"
-                      onMouseLeave={() => setShowGenerateResumeDropdown(false)}
-                    >
-                      <button
-                        onClick={handleGenerateResume}
-                        disabled={!selectedProfileId || tailorLoading || jdCaptureLoading || jdSelectionMode || !isElectron}
-                        className="flex items-center justify-center w-full rounded-t-xl px-4 py-2.5 text-slate-100 transition hover:bg-slate-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                        title="JD From Stream"
-                      >
-                        <Radio className="w-5 h-5 mr-2 pr-1" />
-                        <span>JD From Stream</span>
-                      </button>
-                      <div className="h-px bg-slate-600" />
-                      <button
-                        onClick={handleManualJdInput}
-                        disabled={!selectedProfileId || tailorLoading || jdCaptureLoading || jdSelectionMode}
-                        className="flex items-center justify-center w-full rounded-b-xl px-4 py-2.5 text-slate-100 transition hover:bg-slate-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                        title="JD Manually Input"
-                      >
-                        <Keyboard className="w-5 h-5 mr-2 pr-1" />
-                        <span> JD Manually Input</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-700 p-4 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
-                      Autofill
-                    </p>
-                  </div>
-                  <span className="text-xs text-slate-500">Ctrl + Shift + F</span>
-                </div>
-
-                <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-800 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-100">
-                      LLM fallback
-                    </p>
-                  </div>
-
-                <button onClick={() => setUseLlmAutofill((v) => !v)}
-                    className={`relative flex h-6 w-12 items-center rounded-full transition ${
-                      useLlmAutofill ? "bg-emerald-400" : "bg-slate-300"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
-                        useLlmAutofill ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                    <span className="sr-only">Toggle LLM autofill</span>
-                  </button>
-                </div>
-
-                {/* Action */}
-                <button
-                  onClick={handleAutofill}
-                  disabled={!session || loadingAction === "autofill"}
-                  className="flex items-center justify-center w-full rounded-xl bg-indigo-400 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                  title={loadingAction === "autofill" ? "Filling…" : "Autofill"}
-                >
-                  {loadingAction === "autofill" ? (
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-5 h-5 mr-2 pr-1" />
-                  )}
-                  <span>
-                    {loadingAction === "autofill" ? "Filling…" : "Autofill"}
-                  </span>
-                </button>
-              </div>
-
-              <div className="rounded-xl border border-slate-700 p-4 shadow-sm space-y-4">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
-                    Base info
-                  </p>
-
-                  <button
-                    onClick={() => setShowBaseInfo((v) => !v)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400
-                              transition hover:bg-slate-800 hover:text-slate-200"
-                    aria-label={showBaseInfo ? "Collapse" : "Expand"}
-                  >
-                    <svg
-                      className={`h-4 w-4 transition-transform ${
-                        showBaseInfo ? "rotate-90" : ""
-                      }`}
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M9 18l6-6-6-6" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Content */}
-                {showBaseInfo ? (
-                  <div className="rounded-2xl p-4">
-                    <div className="space-y-2 text-sm ">
-                      <EditableRow label="First name" editing={false} value={baseDraft?.name?.first || "N/A"} />
-                      <EditableRow label="Last name" editing={false} value={baseDraft?.name?.last || "N/A"} />
-                      <EditableRow label="Email" editing={false} value={baseDraft?.contact?.email || "N/A"} />
-                      <EditableRow label="Phone code" editing={false} value={baseDraft?.contact?.phoneCode || "N/A"} />
-                      <EditableRow label="Phone number" editing={false} value={baseDraft?.contact?.phoneNumber || "N/A"} />
-                      <EditableRow label="Phone (combined)" editing={false} value={formatPhone(baseDraft.contact) || "N/A"} />
-                      <EditableRow label="LinkedIn" editing={false} value={baseDraft?.links?.linkedin || "N/A"} />
-
-                      <div className="my-3 h-px w-full bg-slate-200/60" />
-
-                      <EditableRow label="Address" editing={false} value={baseDraft?.location?.address || "N/A"} />
-                      <EditableRow label="City" editing={false} value={baseDraft?.location?.city || "N/A"} />
-                      <EditableRow label="State / Province" editing={false} value={baseDraft?.location?.state || "N/A"} />
-                      <EditableRow label="Country" editing={false} value={baseDraft?.location?.country || "N/A"} />
-                      <EditableRow label="Postal code" editing={false} value={baseDraft?.location?.postalCode || "N/A"} />
-
-                      <div className="my-3 h-px w-full bg-slate-200/60" />
-
-                      <EditableRow label="Job title" editing={false} value={baseDraft?.career?.jobTitle || "N/A"} />
-                      <EditableRow label="Current company" editing={false} value={baseDraft?.career?.currentCompany || "N/A"} />
-                      <EditableRow label="Years of experience" editing={false} value={(baseDraft?.career?.yearsExp as string) || "N/A"} />
-                      <EditableRow label="Desired salary" editing={false} value={baseDraft?.career?.desiredSalary || "N/A"} />
-
-                      <div className="my-3 h-px w-full bg-slate-200/60" />
-
-                      <EditableRow label="School" editing={false} value={baseDraft?.education?.school || "N/A"} />
-                      <EditableRow label="Degree" editing={false} value={baseDraft?.education?.degree || "N/A"} />
-                      <EditableRow label="Major / field" editing={false} value={baseDraft?.education?.majorField || "N/A"} />
-                      <EditableRow label="Graduation date" editing={false} value={baseDraft?.education?.graduationAt || "N/A"} />
-
-
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-            </div>
-          </section>
-          <section className="flex flex-col gap-2 bg-gradient-to-br from-slate-50 via-white to-slate-100 rounded-2xl shadow-lg">
-            <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 pt-8">
-              <header className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/20">
-                    <Briefcase className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
-                      Workspace
-                    </p>
-                    <h1 className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
-                      Job Application
-                    </h1>
-                  </div>
-                </div>
-                <p className="max-w-2xl text-base leading-relaxed text-slate-600">
-                  Manage your job applications, tailor resumes, and track your progress.
-                </p>
-              </header>
-              <div className="space-y-6">
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="mb-4">
-                    <h2 className="text-lg font-semibold text-slate-900">Job URL</h2>
-                    <p className="mt-1 text-sm text-slate-600">Enter the job posting URL to get started</p>
-                  </div>
-                  <div
-                    className={`relative rounded-2xl border-2 p-4 transition-all ${
-                      jdSelectionMode
-                        ? "border-slate-200 bg-slate-50/50"
-                        : "border-slate-200 bg-slate-50/50"
-                    }`}
-                  >
-                    {jdSelectionMode && (
-                      <div className="absolute right-6 top-6 z-10 rounded-full bg-emerald-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm">
-                        Selection mode
-                      </div>
-                    )}
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <div className="flex-1">
-                        <input
-                          value={url}
-                          onChange={(e) => setUrl(e.target.value)}
-                          placeholder="https://example.com/job-posting"
-                          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20"
-                        />
-                      </div>
-                      <div className="flex gap-2 sm:flex-shrink-0">
-                        {!navigationStarted ? (
-                          <button
-                            onClick={handleGo}
-                            disabled={loadingAction === "go" || !selectedProfileId}
-                            className="min-w-[100px] rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-indigo-600"
-                          >
-                            {loadingAction === "go" ? (
-                              <span className="flex items-center justify-center gap-2">
-                                <RefreshCw className="h-4 w-4 animate-spin" />
-                                Connecting...
-                              </span>
-                            ) : (
-                              "Go"
-                            )}
-                          </button>
-                        ) : (
-                          <>
-                            <button
-                              onClick={handleGoBack}
-                              disabled={!canGoBack}
-                              className="min-w-[50px] rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
-                              title="Go back"
-                            >
-                              <ChevronLeft className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={handleGoForward}
-                              disabled={!canGoForward}
-                              className="min-w-[50px] rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
-                              title="Go forward"
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </button>
-                          </>
-                        )}
-                        <button
-                          onClick={handleCheck}
-                          disabled={!canCheck}
-                          className="min-w-[100px] rounded-xl border-2 border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {loadingAction === "check" ? (
-                            <span className="flex items-center justify-center gap-2">
-                              <RefreshCw className="h-4 w-4 animate-spin" />
-                              Checking...
-                            </span>
-                          ) : (
-                            "Check"
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    className={`relative min-h-[420px] h-[70vh] max-h-[80vh] overflow-hidden rounded-3xl bg-gradient-to-br from-white via-slate-50 to-slate-100 transition-shadow duration-300 ${
-                      jdSelectionMode ? "z-50 ring-2 ring-emerald-400 jd-border-animate" : ""
-                    }`}
-                  >
-                {streamFrame ? (
-                  <div className="h-full w-full overflow-auto bg-white">
-                    <img
-                      src={streamFrame}
-                      alt="Remote browser stream"
-                      className="block w-full"
-                    />
-                  </div>
-                ) : browserSrc ? (
-                  isElectron ? (
-                    <div className="relative h-full w-full">
-                      <webview
-                        ref={setWebviewRef as unknown as React.Ref<HTMLWebViewElement>}
-                        key={browserSrc}
-                        src={browserSrc}
-                        partition={webviewPartition}
-                        style={{ height: "100%", width: "100%", backgroundColor: "#ffffff" }}
-                      />
-                      <div className="absolute top-2 right-3 flex items-center gap-2 text-[11px] text-slate-800">
-                        <span className="rounded-full bg-slate-100lack/50 px-2 py-1">Electron view</span>
-                        {webviewStatus === "ready" && (
-                          <span className="rounded-full bg-[#5ef3c5]/80 px-2 py-1 text-[#0b1224]">
-                            Loaded
-                          </span>
-                        )}
-                        {webviewStatus === "loading" && (
-                          <span className="rounded-full bg-slate-100lack/50 px-2 py-1 text-slate-800">
-                            Loading…
-                          </span>
-                        )}
-                      </div>
-                      {webviewStatus === "failed" && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/95 via-slate-50/95 to-slate-100/95 backdrop-blur-sm p-4 text-center text-sm text-slate-700">
-                          <div className="space-y-2">
-                            <div>Could not load this page inside the Electron view.</div>
-                            <a
-                              href={browserSrc}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center justify-center rounded-full bg-[#5ef3c5] px-4 py-2 text-xs font-semibold text-[#0b1224] hover:brightness-110"
-                            >
-                              Open in browser
-                            </a>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <iframe
-                        key={browserSrc}
-                        src={browserSrc}
-                        className="h-full w-full bg-white"
-                        style={{ backgroundColor: '#ffffff' }}
-                        allowFullScreen
-                        referrerPolicy="no-referrer"
-                        onLoad={() => setFrameLoaded(true)}
-                      />
-                      {!frameLoaded && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/95 via-slate-50/95 to-slate-100/95 backdrop-blur-sm text-slate-700">
-                          <div className="text-center space-y-2">
-                            <div className="text-sm font-semibold">
-                              Site may block iframe embedding.
-                            </div>
-                            <a
-                              href={browserSrc}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center justify-center rounded-full bg-[#5ef3c5] px-4 py-2 text-xs font-semibold text-[#0b1224] hover:brightness-110"
-                            >
-                              Open in new tab
-                            </a>
-                          </div>
-                        </div>
-                      )}
-                      <div className="absolute top-2 right-2 flex gap-2">
-                        <a
-                          href={browserSrc}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-full bg-slate-100lack/50 px-3 py-1 text-[11px] text-slate-800 hover:bg-slate-100lack/60"
-                        >
-                          Open in new tab
-                        </a>
-                      </div>
-                    </>
-                  )
-                ) : (
-                  <div className="flex h-full items-center justify-center text-slate-600">
-                    <div className="text-center space-y-2">
-                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-indigo-100 to-cyan-100 mb-2">
-                        <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                        </svg>
-                      </div>
-                      <div className="text-sm font-semibold text-slate-700">No URL loaded</div>
-                      <div className="text-xs text-slate-500">
-                        Enter a URL and click Go.
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {streamConnected && (
-                  <div className="pointer-events-none absolute bottom-2 right-3 rounded-full bg-slate-100lack/40 px-3 py-1 text-[11px] text-[#5ef3c5]">
-                    Streaming
-                  </div>
-                )}
-                  </div>
-                </div>
-                {/* <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                  <div className="relative min-h-[420px] h-[70vh] max-h-[80vh] overflow-hidden bg-gradient-to-br from-white via-slate-50 to-slate-100">
-                {streamFrame ? (
-                  <div className="h-full w-full overflow-auto bg-white">
-                    <img
-                      src={streamFrame}
-                      alt="Remote browser stream"
-                      className="block w-full"
-                    />
-                  </div>
-                ) : browserSrc ? (
-                  isElectron ? (
-                    <div className="relative h-full w-full">
-                      <webview
-                        ref={setWebviewRef as unknown as React.Ref<HTMLWebViewElement>}
-                        key={browserSrc}
-                        src={browserSrc}
-                        partition={webviewPartition}
-                        style={{ height: "100%", width: "100%", backgroundColor: "#ffffff" }}
-                      />
-                      <div className="absolute top-2 right-3 flex items-center gap-2 text-[11px] text-slate-800">
-                        <span className="rounded-full bg-slate-100lack/50 px-2 py-1">Electron view</span>
-                        {webviewStatus === "ready" && (
-                          <span className="rounded-full bg-[#5ef3c5]/80 px-2 py-1 text-[#0b1224]">
-                            Loaded
-                          </span>
-                        )}
-                        {webviewStatus === "loading" && (
-                          <span className="rounded-full bg-slate-100lack/50 px-2 py-1 text-slate-800">
-                            Loading…
-                          </span>
-                        )}
-                      </div>
-                      {webviewStatus === "failed" && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/95 via-slate-50/95 to-slate-100/95 backdrop-blur-sm p-4 text-center text-sm text-slate-700">
-                          <div className="space-y-2">
-                            <div>Could not load this page inside the Electron view.</div>
-                            <a
-                              href={browserSrc}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center justify-center rounded-full bg-[#5ef3c5] px-4 py-2 text-xs font-semibold text-[#0b1224] hover:brightness-110"
-                            >
-                              Open in browser
-                            </a>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <iframe
-                        key={browserSrc}
-                        src={browserSrc}
-                        className="h-full w-full bg-white"
-                        style={{ backgroundColor: '#ffffff' }}
-                        allowFullScreen
-                        referrerPolicy="no-referrer"
-                        onLoad={() => setFrameLoaded(true)}
-                      />
-                      {!frameLoaded && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-white/95 via-slate-50/95 to-slate-100/95 backdrop-blur-sm text-slate-700">
-                          <div className="text-center space-y-2">
-                            <div className="text-sm font-semibold">
-                              Site may block iframe embedding.
-                            </div>
-                            <a
-                              href={browserSrc}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center justify-center rounded-full bg-[#5ef3c5] px-4 py-2 text-xs font-semibold text-[#0b1224] hover:brightness-110"
-                            >
-                              Open in new tab
-                            </a>
-                          </div>
-                        </div>
-                      )}
-                      <div className="absolute top-2 right-2 flex gap-2">
-                        <a
-                          href={browserSrc}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-full bg-slate-100lack/50 px-3 py-1 text-[11px] text-slate-800 hover:bg-slate-100lack/60"
-                        >
-                          Open in new tab
-                        </a>
-                      </div>
-                    </>
-                  )
-                ) : (
-                  <div className="flex h-full items-center justify-center text-slate-600">
-                    <div className="text-center space-y-2">
-                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-indigo-100 to-cyan-100 mb-2">
-                        <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                        </svg>
-                      </div>
-                      <div className="text-sm font-semibold text-slate-700">No URL loaded</div>
-                      <div className="text-xs text-slate-500">
-                        Enter a URL and click Go.
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {streamConnected && (
-                  <div className="pointer-events-none absolute bottom-2 right-3 rounded-full bg-slate-100lack/40 px-3 py-1 text-[11px] text-[#5ef3c5]">
-                    Streaming
-                  </div>
-                )}
-                  </div>
-                </div> */}
-              </div>
-            </div>
-          </section>
-        </div>
-        ) : (
-          <div />
-        )}
-
-      </div>
-      {jdPreviewOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
-          onClick={() => setJdPreviewOpen(false)}
-        >
-          <div
-            className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
-                  Job description
-                </p>
-                <h2 className="text-2xl font-semibold text-slate-900">Review</h2>
-                <p className="text-xs text-slate-500">
-                  Confirm the JD text before sending to AI.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCancelJd}
-                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 transition"
-                  title="Cancel"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <textarea
-                value={jdDraft}
-                onChange={(event) => setJdDraft(event.target.value)}
-                placeholder={jdCaptureLoading ? "Enable selection mode..." : jdSelectionMode ? "Selected job description" : "Paste job description here..."}
-                className="h-80 w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
-                disabled={jdCaptureLoading}
+          {user ? (
+            <div className="relative min-h-[calc(100vh-57px)] xl:space-y-0">
+              <WorkspaceSidebar
+                profiles={profiles}
+                selectedProfileId={selectedProfileId}
+                onSelectProfile={setSelectedProfileId}
+                aiProvider={aiProvider}
+                onAiProviderChange={setAiProvider}
+                onOpenJdModal={handleManualJdInput}
+                tailorLoading={tailorLoading}
+                onAutofill={handleAutofill}
+                autofillDisabled={!session || loadingAction === "autofill"}
+                loadingAction={loadingAction}
+                showBaseInfo={showBaseInfo}
+                onToggleBaseInfo={() => setShowBaseInfo((v) => !v)}
+                baseDraft={baseDraft}
+                phoneCombined={phoneCombined}
               />
-              {jdCaptureError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                  {jdCaptureError}
-                </div>
-              ) : null}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                    Bullet counts
-                  </p>
-                  <p className="text-xs text-slate-500">Company Title - Role Number</p>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {companyTitleKeys.length ? (
-                    companyTitleKeys.map((companyTitle, index) => {
-                      const roleLabel = cleanString(
-                        baseResumeView.workExperience?.[index]?.roleTitle
-                      );
-                      const displayLabel = [companyTitle, roleLabel || `Role ${index + 1}`]
-                        .filter(Boolean)
-                        .join(" - ");
-                      const fallbackCount = index === 0 ? 3 : 1;
-                      const currentValue =
-                        typeof bulletCountByCompany[companyTitle] === "number"
-                          ? bulletCountByCompany[companyTitle]
-                          : fallbackCount;
-                      return (
-                        <label
-                          key={`${companyTitle}-${index}`}
-                          className="flex items-center justify-between gap-3 text-xs text-slate-700"
-                        >
-                          <span className="flex-1 truncate">{displayLabel}</span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            inputMode="numeric"
-                            value={currentValue}
-                            onChange={(event) => {
-                              const nextValue = event.target.valueAsNumber;
-                              const safeValue = Number.isFinite(nextValue)
-                                ? Math.max(0, nextValue)
-                                : 0;
-                              setBulletCountByCompany((prev) => ({
-                                ...prev,
-                                [companyTitle]: safeValue,
-                              }));
-                            }}
-                            className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 shadow-sm outline-none focus:ring-1 focus:ring-slate-300"
-                          />
-                        </label>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                      No work experience entries found.
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleConfirmJd}
-                  disabled={jdCaptureLoading || !jdDraft.trim() || tailorLoading}
-                  className="flex items-center justify-center rounded-full bg-slate-900 p-2.5 text-white hover:bg-slate-800 disabled:opacity-60 transition"
-                  title={tailorLoading ? "Generating..." : "Generate"}
-                >
-                  {tailorLoading ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Play className="w-4 h-4" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReselectJd}
-                  disabled={jdCaptureLoading || tailorLoading}
-                  className="flex items-center justify-center rounded-full border border-slate-200 p-2.5 text-slate-700 hover:bg-slate-100 disabled:opacity-60 transition"
-                  title="Reselect"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelJd}
-                  disabled={jdCaptureLoading || tailorLoading}
-                  className="flex items-center justify-center rounded-full border border-slate-200 p-2.5 text-slate-700 hover:bg-slate-100 disabled:opacity-60 transition"
-                  title="Cancel"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+              <WorkspaceBrowser
+                onGoBack={handleGoBack}
+                onGoForward={handleGoForward}
+                onRefresh={handleRefresh}
+                onGo={handleGo}
+                onCheck={handleCheck}
+                canGoBack={canGoBack}
+                canGoForward={canGoForward}
+                canCheck={canCheck}
+                loadingAction={loadingAction}
+                selectedProfileId={selectedProfileId}
+                url={url}
+                onUrlChange={setUrl}
+                navigationStarted={navigationStarted}
+                isElectron={isElectron}
+                browserSrc={browserSrc}
+                setWebviewRef={setWebviewRef}
+                webviewPartition={webviewPartition}
+              />
             </div>
-          </div>
+          ) : (
+            <div />
+          )}
+
         </div>
-      )}
-      {resumePreviewOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
-          onClick={() => setResumePreviewOpen(false)}
-        >
-          <div
-            className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
-                  Tailored resume
-                </p>
-                <h2 className="text-2xl font-semibold text-slate-900">Preview</h2>
-                {selectedProfile ? (
-                  <p className="text-xs text-slate-500">
-                    Profile: {selectedProfile.displayName}
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleDownloadTailoredPdf}
-                  disabled={tailorPdfLoading || !resumePreviewHtml.trim()}
-                  className="flex items-center justify-center rounded-full bg-slate-900 p-2 text-white hover:bg-slate-800 disabled:opacity-60 transition"
-                  title={tailorPdfLoading ? "Saving..." : "Save PDF"}
-                >
-                  {tailorPdfLoading ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRegenerateResume}
-                  disabled={tailorLoading || !jdDraft.trim()}
-                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 disabled:opacity-60 transition"
-                  title={tailorLoading ? "Generating..." : "Regenerate"}
-                >
-                  {tailorLoading ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleGenerateResume}
-                  disabled={tailorLoading}
-                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 disabled:opacity-60 transition"
-                  title="Reselect JD"
-                >
-                  <Radio className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setResumePreviewOpen(false)}
-                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 transition"
-                  title="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                Template
-              </div>
-              {resumeTemplatesLoading ? (
-                <div className="text-xs text-slate-500">Loading templates...</div>
-              ) : resumeTemplates.length === 0 ? (
-                <div className="text-xs text-slate-500">No templates yet.</div>
-              ) : (
-                <select
-                  value={resumeTemplateId}
-                  onChange={(event) => setResumeTemplateId(event.target.value)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700"
-                >
-                  {resumeTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            {tailorError ? (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {tailorError}
-              </div>
-            ) : null}
-            {tailorPdfError ? (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {tailorPdfError}
-              </div>
-            ) : null}
-            {resumeTemplatesError ? (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {resumeTemplatesError}
-              </div>
-            ) : null}
-
-            <div className="mt-5 space-y-3">
-              <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                Template preview
-              </div>
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                {tailorLoading ? (
-                  <div className="flex h-[520px] items-center justify-center text-sm text-slate-500">
-                    Generating tailored resume...
-                  </div>
-                ) : (
-                  <iframe
-                    title="Tailored resume preview"
-                    srcDoc={resumePreviewDoc}
-                    className="h-[520px] w-full"
-                    sandbox=""
-                    referrerPolicy="no-referrer"
-                  />
-                )}
-              </div>
-              {llmRawOutput ? (
-                <details className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                  <summary className="cursor-pointer text-xs font-semibold text-slate-700">
-                    LLM output (for testing)
-                  </summary>
-                  <div className="mt-2 text-[11px] text-slate-500">
-                    Provider: {llmMeta?.provider || "unknown"} · Model: {llmMeta?.model || "unknown"}
-                  </div>
-                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs text-slate-800">
-{llmRawOutput}
-                  </pre>
-                </details>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Assistant Button - Fixed Bottom Right */}
-      {!chatModalOpen && (
-        <button
-          onClick={handleOpenChatModal}
-          className="group fixed bottom-6 right-6 z-50 flex items-center gap-0 rounded-full bg-indigo-500 p-3 text-white shadow-lg transition-all duration-300 hover:bg-indigo-600 hover:shadow-xl hover:px-4 active:scale-95"
-          title="AI Assistant"
-        >
-        <MessageCircle className="h-6 w-6 flex-shrink-0" />
-        <span className="max-w-0 overflow-hidden whitespace-nowrap text-sm font-medium opacity-0 transition-all duration-300 group-hover:max-w-[120px] group-hover:ml-2 group-hover:opacity-100">
-          AI Assistant
-        </span>
-      </button>
-      )}
-
-      {/* Chat Modal */}
-      {chatModalOpen && (
-        <div
-          className="fixed bottom-6 right-6 z-[9999] flex flex-col h-[50vh] w-full max-w-md rounded-3xl border border-slate-200 bg-white shadow-2xl"
-        >
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <MessageCircle className="h-5 w-5 text-indigo-500" />
-                <h2 className="text-xl font-semibold text-slate-900">AI Assistant</h2>
-              </div>
-              <div className="flex items-center gap-3">
-                <select
-                  value={chatProvider}
-                  onChange={(e) =>
-                    setChatProvider(e.target.value as "OPENAI" | "HUGGINGFACE" | "GEMINI")
-                  }
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 outline-none ring-1 ring-transparent transition focus:border-indigo-500 focus:ring-indigo-500"
-                >
-                  <option value="HUGGINGFACE">Hugging Face</option>
-                  <option value="OPENAI">OpenAI</option>
-                  <option value="GEMINI">Gemini</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setChatModalOpen(false)}
-                  className="flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-700 hover:bg-slate-100 transition"
-                  title="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              {chatMessages.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                  Starting conversation...
-                </div>
-              ) : (
-                chatMessages.map((msg, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-                        msg.role === "user"
-                          ? "bg-indigo-500 text-white"
-                          : "bg-slate-100 text-slate-900"
-                      }`}
-                    >
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-              {chatLoading && (
-                <div className="flex justify-start">
-                  <div className="max-w-[80%] rounded-2xl bg-slate-100 px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]"></div>
-                      <div className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.15s]"></div>
-                      <div className="h-2 w-2 animate-bounce rounded-full bg-slate-400"></div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={chatMessagesEndRef} />
-            </div>
-
-            {/* Input */}
-            <div className="border-t border-slate-200 px-6 py-4">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void handleSendChatMessage();
-                }}
-                className="flex items-center gap-3"
-              >
-                <input
-                  ref={chatInputRef}
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Ask an interview question..."
-                  disabled={chatLoading}
-                  className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none ring-1 ring-transparent transition focus:border-indigo-500 focus:ring-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void handleSendChatMessage();
-                    }
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={!chatInput.trim() || chatLoading}
-                  className="flex items-center justify-center rounded-xl bg-indigo-500 p-2.5 text-white transition hover:bg-indigo-600 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-                  title="Send"
-                >
-                  {chatLoading ? (
-                    <RefreshCw className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Send className="h-5 w-5" />
-                  )}
-                </button>
-              </form>
-            </div>
-        </div>
-      )}
-    </main>
+        <JdPreviewModal
+          open={jdPreviewOpen}
+          onClose={() => setJdPreviewOpen(false)}
+          onCancel={handleCancelJd}
+          onConfirm={handleConfirmJd}
+          jdDraft={jdDraft}
+          onJdDraftChange={setJdDraft}
+          jdCaptureError={jdCaptureError}
+          companyTitleKeys={companyTitleKeys}
+          baseResumeView={baseResumeView}
+          bulletCountByCompany={bulletCountByCompany}
+          onBulletCountChange={setBulletCountByCompany}
+          tailorLoading={tailorLoading}
+        />
+        <ResumePreviewModal
+          open={resumePreviewOpen}
+          onClose={() => setResumePreviewOpen(false)}
+          onDownloadPdf={handleDownloadTailoredPdf}
+          onRegenerate={handleRegenerateResume}
+          onReselectJd={handleManualJdInput}
+          resumeTemplates={resumeTemplates}
+          resumeTemplatesLoading={resumeTemplatesLoading}
+          resumeTemplatesError={resumeTemplatesError}
+          resumeTemplateId={resumeTemplateId}
+          onResumeTemplateChange={setResumeTemplateId}
+          selectedProfile={selectedProfile}
+          tailorLoading={tailorLoading}
+          tailorError={tailorError}
+          tailorPdfLoading={tailorPdfLoading}
+          tailorPdfError={tailorPdfError}
+          resumePreviewHtml={resumePreviewHtml}
+          resumePreviewDoc={resumePreviewDoc}
+          jdDraft={jdDraft}
+          llmRawOutput={llmRawOutput}
+          llmMeta={llmMeta}
+        />
+        <ChatWidget
+          open={chatModalOpen}
+          onOpen={handleOpenChatModal}
+          onClose={() => setChatModalOpen(false)}
+          chatProvider={chatProvider}
+          onChatProviderChange={setChatProvider}
+          chatMessages={chatMessages}
+          chatInput={chatInput}
+          onChatInputChange={setChatInput}
+          chatLoading={chatLoading}
+          onSendMessage={handleSendChatMessage}
+          chatMessagesEndRef={chatMessagesEndRef}
+          chatInputRef={chatInputRef}
+        />
+      </main>
     </>
   );
 }
@@ -3075,10 +2127,10 @@ function buildPromptCompanyTitleKey(item: WorkExperience) {
   );
   const company = cleanString(
     (source.company ?? source.companyTitle ?? source.company_name) as
-      | string
-      | number
-      | null
-      | undefined
+    | string
+    | number
+    | null
+    | undefined
   );
   if (title && company) return `${title} - ${company}`;
   return title || company || "";
@@ -3095,7 +2147,7 @@ function normalizeKeyForMatch(key: string): string {
 
 function buildBulletCountDefaults(keys: string[], profileDefaults?: Record<string, number>) {
   const result: Record<string, number> = {};
-  
+
   // Create a normalized lookup map from profile defaults
   const normalizedDefaults = new Map<string, { originalKey: string; value: number }>();
   if (profileDefaults) {
@@ -3108,18 +2160,18 @@ function buildBulletCountDefaults(keys: string[], profileDefaults?: Record<strin
       }
     });
   }
-  
+
   keys.forEach((key, index) => {
     if (!key) return;
     const normalizedKey = normalizeKeyForMatch(key);
     // Try exact match first
     if (profileDefaults && typeof profileDefaults[key] === "number") {
       result[key] = profileDefaults[key];
-    } 
+    }
     // Try normalized match
     else if (normalizedDefaults.has(normalizedKey)) {
       result[key] = normalizedDefaults.get(normalizedKey)!.value;
-    } 
+    }
     // Fall back to static defaults
     else {
       result[key] = index === 0 ? 3 : 1;
@@ -3527,63 +2579,6 @@ function getPdfFilenameFromHeader(header: string | null) {
   if (!header) return "";
   const match = header.match(/filename=\"?([^\";]+)\"?/i);
   return match ? match[1] : "";
-}
-
-function StatTile({
-  label,
-  value,
-  helper,
-}: {
-  label: string;
-  value: string;
-  helper?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3">
-      <div className="text-[11px] uppercase tracking-[0.12em] text-slate-700 leading-snug">
-        {label}
-      </div>
-      <div className="text-lg font-semibold leading-tight">{value}</div>
-      {helper && <div className="text-[11px] text-slate-500">{helper}</div>}
-    </div>
-  );
-}
-
-function TriangleIcon({ direction }: { direction: "down" | "left" }) {
-  const rotation = direction === "down" ? "rotate-0" : "rotate-90";
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={`h-4 w-4 fill-current ${rotation}`}
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M12 16.5 5 7.5h14z" />
-    </svg>
-  );
-}
-
-function EditableRow({
-  label,
-  value,
-  editing,
-  children,
-}: {
-  label: string;
-  value: string;
-  editing: boolean;
-  children?: ReactNode;
-  }) {
-  return (
-    <div className="rounded-2xl bg-white/5 px-3 py-2">
-      <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-slate-200">
-        <span>{label}</span>
-      </div>
-      <div className="mt-2 text-sm text-slate-100">
-        {editing ? (children ?? value ?? "N/A") : value ?? "N/A"}
-      </div>
-    </div>
-  );
 }
 
 function safeHostname(url: string) {
