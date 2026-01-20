@@ -13,6 +13,7 @@ type ResumeTemplate = {
   name: string;
   description?: string | null;
   html: string;
+  profileCount?: number;
   createdAt: string;
   updatedAt: string;
   createdBy?: string | null;
@@ -437,6 +438,7 @@ ${rendered}
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">ID</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Templates Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Profiles</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Created_by</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Created_at</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Updated_by</th>
@@ -448,21 +450,22 @@ ${rendered}
                   {templates.map((template, index) => {
                     const active = template.id === selectedId;
                     return (
-                      <tr
-                        key={template.id}
-                        onClick={() => selectTemplate(template.id)}
-                        className={`cursor-pointer transition ${
-                          active
+                          <tr
+                            key={template.id}
+                            onClick={() => selectTemplate(template.id)}
+                            className={`cursor-pointer transition ${
+                              active
                             ? "bg-slate-100"
                             : "bg-white hover:bg-slate-50"
                         }`}
-                      >
-                        <td className="px-4 py-3 text-sm text-slate-700">{index + 1}</td>
-                        <td className="px-4 py-3 text-sm font-semibold text-slate-900">{template.name}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{template.createdByName || template.createdBy || "N/A"}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{formatDate(template.createdAt)}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{template.updatedBy || "N/A"}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{formatDate(template.updatedAt)}</td>
+                          >
+                            <td className="px-4 py-3 text-sm text-slate-700">{index + 1}</td>
+                            <td className="px-4 py-3 text-sm font-semibold text-slate-900">{template.name}</td>
+                            <td className="px-4 py-3 text-sm text-slate-600">{template.profileCount ?? 0}</td>
+                            <td className="px-4 py-3 text-sm text-slate-600">{template.createdByName || template.createdBy || "N/A"}</td>
+                            <td className="px-4 py-3 text-sm text-slate-600">{formatDate(template.createdAt)}</td>
+                            <td className="px-4 py-3 text-sm text-slate-600">{template.updatedBy || "N/A"}</td>
+                            <td className="px-4 py-3 text-sm text-slate-600">{formatDate(template.updatedAt)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                             <button
@@ -528,6 +531,11 @@ ${rendered}
                         {mode === "view" && selectedTemplate ? (
                           <p className="text-xs text-slate-500 mt-1">
                             Updated {formatDate(selectedTemplate.updatedAt)}
+                          </p>
+                        ) : null}
+                        {mode === "view" && selectedTemplate?.profileCount !== undefined ? (
+                          <p className="text-xs text-slate-500">
+                            Profiles using this template: {selectedTemplate.profileCount}
                           </p>
                         ) : null}
                       </div>

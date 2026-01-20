@@ -41,7 +41,7 @@ const EMPTY_RESUME_PREVIEW = `<!doctype html>
   <div style="max-width: 520px;">
     <h2 style="margin: 0 0 8px; font-size: 18px;">Resume preview</h2>
     <p style="margin: 0; font-size: 13px; line-height: 1.5;">
-      Generate a tailored resume to see the template preview.
+      Generate a tailored resume to see the template preview. Make sure this profile has a resume template assigned.
     </p>
   </div>
 </body>
@@ -269,6 +269,14 @@ export default function Page() {
     return html ? html : EMPTY_RESUME_PREVIEW;
   }, [resumePreviewHtml]);
 
+  const templateStatusError = useMemo(() => {
+    if (!selectedProfile?.resumeTemplateId) return resumeTemplatesError;
+    if (!resumeTemplatesLoading && selectedProfile.resumeTemplateId && !selectedTemplate) {
+      return "Assigned resume template is unavailable. Please ask a manager to update it.";
+    }
+    return resumeTemplatesError;
+  }, [resumeTemplatesError, resumeTemplatesLoading, selectedProfile?.resumeTemplateId, selectedTemplate]);
+
   const appliedPct = metrics ? `${metrics.appliedPercentage}%` : "0%";
   const monthlyApplied = metrics?.monthlyApplied ?? 0;
   const baseDraft = cleanBaseInfo(baseInfoView);
@@ -350,13 +358,19 @@ export default function Page() {
 
   useEffect(() => {
     if (!resumeTemplates.length) {
-      setResumeTemplateId("");
+      setResumeTemplateId(selectedProfile?.resumeTemplateId ?? "");
       return;
     }
-    if (!resumeTemplateId || !resumeTemplates.some((t) => t.id === resumeTemplateId)) {
-      setResumeTemplateId(resumeTemplates[0].id);
+    setResumeTemplateId(selectedProfile?.resumeTemplateId ?? "");
+  }, [resumeTemplates, selectedProfile?.id, selectedProfile?.resumeTemplateId]);
+
+  useEffect(() => {
+    if (!selectedProfile?.resumeTemplateId) return;
+    const hasTemplate = resumeTemplates.some((template) => template.id === selectedProfile.resumeTemplateId);
+    if (!hasTemplate && !resumeTemplatesLoading) {
+      void loadResumeTemplates();
     }
-  }, [resumeTemplates, resumeTemplateId]);
+  }, [loadResumeTemplates, resumeTemplates, resumeTemplatesLoading, selectedProfile?.resumeTemplateId]);
 
   useEffect(() => {
     setWebviewStatus("idle");
@@ -1303,11 +1317,21 @@ export default function Page() {
     }
   }
 
+  function requireProfileTemplate(): string | null {
+    if (!selectedProfile?.resumeTemplateId) {
+      showError("Assign a resume template to this profile first.");
+      return null;
+    }
+    return selectedProfile.resumeTemplateId;
+  }
+
   async function handleManualJdInput() {
     if (!selectedProfile || !selectedProfileId) {
       showError("Select a profile before generating a resume.");
       return;
     }
+    const profileTemplateId = requireProfileTemplate();
+    if (!profileTemplateId) return;
     setJdPreviewOpen(true);
     setJdCaptureError("");
     setJdDraft("");
@@ -1337,11 +1361,16 @@ export default function Page() {
       setJdCaptureError("Job description is empty.");
       return;
     }
-    setResumePreviewOpen(true);
-    setJdPreviewOpen(false);
+    const profileTemplateId = requireProfileTemplate();
+    if (!profileTemplateId) {
+      setTailorError("Assign a resume template to this profile first.");
+      return;
+    }
     if (!resumeTemplates.length && !resumeTemplatesLoading) {
       void loadResumeTemplates();
     }
+    setResumePreviewOpen(true);
+    setJdPreviewOpen(false);
     setTailorError("");
     setTailorPdfError("");
     setLlmRawOutput("");
@@ -1408,6 +1437,14 @@ export default function Page() {
       setTailorError("Select a profile before generating a resume.");
       return;
     }
+    const profileTemplateId = requireProfileTemplate();
+    if (!profileTemplateId) {
+      setTailorError("Assign a resume template to this profile first.");
+      return;
+    }
+    if (!resumeTemplates.length && !resumeTemplatesLoading) {
+      void loadResumeTemplates();
+    }
     setTailorError("");
     setTailorPdfError("");
     setLlmRawOutput("");
@@ -1466,8 +1503,17 @@ export default function Page() {
   }
 
   async function handleDownloadTailoredPdf() {
+    const profileTemplateId = requireProfileTemplate();
+    if (!profileTemplateId) {
+      setTailorPdfError("Assign a resume template to this profile first.");
+      return;
+    }
+    if (!selectedTemplate) {
+      setTailorPdfError("Assigned resume template is unavailable. Please ask a manager to set it again.");
+      return;
+    }
     if (!resumePreviewHtml.trim()) {
-      setTailorPdfError("Select a template to export.");
+      setTailorPdfError("Assign a resume template to this profile first.");
       return;
     }
     setTailorPdfLoading(true);
@@ -1769,11 +1815,10 @@ export default function Page() {
           onDownloadPdf={handleDownloadTailoredPdf}
           onRegenerate={handleRegenerateResume}
           onReselectJd={handleManualJdInput}
-          resumeTemplates={resumeTemplates}
-          resumeTemplatesLoading={resumeTemplatesLoading}
-          resumeTemplatesError={resumeTemplatesError}
-          resumeTemplateId={resumeTemplateId}
-          onResumeTemplateChange={setResumeTemplateId}
+          templateName={selectedTemplate?.name || selectedProfile?.resumeTemplateName}
+          templateLoading={resumeTemplatesLoading}
+          templateError={templateStatusError}
+          templateAssigned={Boolean(selectedProfile?.resumeTemplateId)}
           selectedProfile={selectedProfile}
           tailorLoading={tailorLoading}
           tailorError={tailorError}

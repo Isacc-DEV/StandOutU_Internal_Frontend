@@ -1,5 +1,5 @@
 import { Download, Radio, RefreshCw, X } from "lucide-react";
-import type { Profile, ResumeTemplate } from "../types";
+import type { Profile } from "../types";
 
 type ResumePreviewModalProps = {
   open: boolean;
@@ -7,11 +7,10 @@ type ResumePreviewModalProps = {
   onDownloadPdf: () => void;
   onRegenerate: () => void;
   onReselectJd: () => void;
-  resumeTemplates: ResumeTemplate[];
-  resumeTemplatesLoading: boolean;
-  resumeTemplatesError: string;
-  resumeTemplateId: string;
-  onResumeTemplateChange: (value: string) => void;
+  templateName?: string;
+  templateLoading: boolean;
+  templateError: string;
+  templateAssigned: boolean;
   selectedProfile?: Profile;
   tailorLoading: boolean;
   tailorError: string;
@@ -30,11 +29,10 @@ export default function ResumePreviewModal({
   onDownloadPdf,
   onRegenerate,
   onReselectJd,
-  resumeTemplates,
-  resumeTemplatesLoading,
-  resumeTemplatesError,
-  resumeTemplateId,
-  onResumeTemplateChange,
+  templateName,
+  templateLoading,
+  templateError,
+  templateAssigned,
   selectedProfile,
   tailorLoading,
   tailorError,
@@ -120,22 +118,16 @@ export default function ResumePreviewModal({
           <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
             Template
           </div>
-          {resumeTemplatesLoading ? (
+          {templateLoading ? (
             <div className="text-xs text-slate-500">Loading templates...</div>
-          ) : resumeTemplates.length === 0 ? (
-            <div className="text-xs text-slate-500">No templates yet.</div>
+          ) : templateAssigned && templateName ? (
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-800">
+              {templateName}
+            </div>
+          ) : templateAssigned ? (
+            <div className="text-xs text-slate-500">Template details are loading...</div>
           ) : (
-            <select
-              value={resumeTemplateId}
-              onChange={(event) => onResumeTemplateChange(event.target.value)}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700"
-            >
-              {resumeTemplates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
+            <div className="text-xs text-red-600">No template assigned. Ask a manager to set one.</div>
           )}
         </div>
         {tailorError ? (
@@ -148,9 +140,9 @@ export default function ResumePreviewModal({
             {tailorPdfError}
           </div>
         ) : null}
-        {resumeTemplatesError ? (
+        {templateError ? (
           <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-            {resumeTemplatesError}
+            {templateError}
           </div>
         ) : null}
 

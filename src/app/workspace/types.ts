@@ -69,6 +69,8 @@ export type Profile = {
   baseInfo: BaseInfo;
   baseResume?: BaseResume;
   baseAdditionalBullets?: Record<string, number>;
+  resumeTemplateId?: string | null;
+  resumeTemplateName?: string | null;
   assignedBidderId?: string;
 };
 
@@ -77,6 +79,7 @@ export type ResumeTemplate = {
   name: string;
   description?: string | null;
   html: string;
+  profileCount?: number;
   createdAt: string;
   updatedAt: string;
 };

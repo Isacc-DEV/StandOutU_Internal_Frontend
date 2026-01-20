@@ -73,6 +73,8 @@ type Profile = {
   createdAt: string;
   updatedAt: string;
   createdBy?: string | null;
+  resumeTemplateId?: string | null;
+  resumeTemplateName?: string | null;
   assignedBidderId?: string | null;
 };
 
@@ -99,6 +101,7 @@ type ResumeTemplate = {
   name: string;
   description?: string | null;
   html: string;
+  profileCount?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -124,7 +127,7 @@ const DEFAULT_BASE_RESUME_SECTIONS = {
 const EMPTY_RESUME_PREVIEW = `<!doctype html>
 <html>
 <body style="font-family: Arial, sans-serif; padding: 24px; color: #475569;">
-  <p>No template selected.</p>
+  <p>Assign a resume template to this profile to preview.</p>
 </body>
 </html>`;
 
@@ -160,6 +163,7 @@ export default function ManagerProfilesPage() {
   const [resumeTemplateId, setResumeTemplateId] = useState<string>("");
   const [resumePdfLoading, setResumePdfLoading] = useState(false);
   const [resumeExportError, setResumeExportError] = useState("");
+  const [templateSavingId, setTemplateSavingId] = useState<string>("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -277,6 +281,19 @@ export default function ManagerProfilesPage() {
     
     return filtered;
   }, [profiles, searchQuery, filterCreatedBy, filterAssignedBy, assignments]);
+
+  const templateUsage = useMemo(() => {
+    const counts = new Map<string, number>();
+    profiles.forEach((profile) => {
+      if (profile.resumeTemplateId) {
+        counts.set(
+          profile.resumeTemplateId,
+          (counts.get(profile.resumeTemplateId) ?? 0) + 1,
+        );
+      }
+    });
+    return counts;
+  }, [profiles]);
 
   const selectedProfile = useMemo(
     () => profiles.find((p) => p.id === selectedId),
@@ -400,14 +417,27 @@ export default function ManagerProfilesPage() {
   }, [activeAssignment, bidders, selectedProfile, token]);
 
   useEffect(() => {
-    if (!resumeTemplates.length) {
-      setResumeTemplateId("");
-      return;
+    const nextTemplateId = selectedProfile?.resumeTemplateId ?? "";
+    setResumeTemplateId(nextTemplateId);
+  }, [selectedProfile?.id, selectedProfile?.resumeTemplateId]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (!selectedProfile?.resumeTemplateId) return;
+    const exists = resumeTemplates.some((template) => template.id === selectedProfile.resumeTemplateId);
+    if (!exists && !resumeTemplatesLoading) {
+      void loadResumeTemplates(token);
     }
-    if (!resumeTemplateId || !resumeTemplates.some((t) => t.id === resumeTemplateId)) {
-      setResumeTemplateId(resumeTemplates[0].id);
-    }
-  }, [resumeTemplates, resumeTemplateId]);
+  }, [loadResumeTemplates, resumeTemplates, resumeTemplatesLoading, selectedProfile?.resumeTemplateId, token]);
+
+  useEffect(() => {
+    if (!addOpen) return;
+    if (!resumeTemplates.length) return;
+    setCreateForm((prev) => {
+      if (prev.resumeTemplateId) return prev;
+      return { ...prev, resumeTemplateId: resumeTemplates[0].id };
+    });
+  }, [addOpen, resumeTemplates]);
 
   async function handleSaveProfile(sectionKey?: SectionKey) {
     if (!selectedProfile || !token) return;
@@ -442,6 +472,49 @@ export default function ManagerProfilesPage() {
       setError("Could not save profile.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleTemplateChange(profileId: string, nextTemplateId: string) {
+    if (!token) return;
+    const currentTemplate =
+      profiles.find((p) => p.id === profileId)?.resumeTemplateId ?? "";
+    if ((currentTemplate || "") === (nextTemplateId || "")) {
+      return;
+    }
+    setTemplateSavingId(profileId);
+    setError("");
+    try {
+      const updated = await api<Profile>(
+        `/profiles/${profileId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            resumeTemplateId: nextTemplateId || null,
+          }),
+        },
+        token,
+      );
+      setProfiles((prev) =>
+        prev.map((p) =>
+          p.id === updated.id
+            ? {
+              ...updated,
+              baseInfo: cleanBaseInfo(updated.baseInfo),
+              baseResume: normalizeBaseResume(updated.baseResume),
+              baseAdditionalBullets: updated.baseAdditionalBullets ?? {},
+            }
+            : p,
+        ),
+      );
+      if (selectedId === updated.id) {
+        setResumeTemplateId(updated.resumeTemplateId ?? "");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Failed to update resume template.");
+    } finally {
+      setTemplateSavingId("");
     }
   }
 
@@ -522,17 +595,38 @@ export default function ManagerProfilesPage() {
   }
 
   function handleOpenResumePreview() {
-    setResumePreviewOpen(true);
     setResumeExportError("");
+    if (!selectedProfile) return;
+    const profileTemplateId = selectedProfile.resumeTemplateId ?? "";
+    if (!profileTemplateId) {
+      if (typeof window !== "undefined") {
+        window.alert("Please assign a resume template to this profile first.");
+      }
+      return;
+    }
     if (!resumeTemplates.length && token) {
       void loadResumeTemplates(token);
     }
+    const hasTemplate = resumeTemplates.some((template) => template.id === profileTemplateId);
+    if (resumeTemplates.length && !hasTemplate) {
+      setResumeExportError("Assigned resume template is unavailable. Please select a different template for this profile.");
+      if (typeof window !== "undefined") {
+        window.alert("Assigned resume template is unavailable. Please set a template first.");
+      }
+      return;
+    }
+    setResumeTemplateId(profileTemplateId);
+    setResumePreviewOpen(true);
   }
 
   async function handleDownloadResumePdf() {
     if (!token) return;
+    if (!selectedProfile?.resumeTemplateId) {
+      setResumeExportError("Assign a resume template to this profile first.");
+      return;
+    }
     if (!resumePreviewHtml.trim()) {
-      setResumeExportError("Select a template to export.");
+      setResumeExportError("Assign a resume template to this profile first.");
       return;
     }
     setResumePdfLoading(true);
@@ -833,7 +927,10 @@ export default function ManagerProfilesPage() {
   );
   const baseResumeLocked = !baseResumeEdit || savingBaseResume;
   const creatingDisabled =
-    createLoading || !createForm.displayName.trim() || createForm.displayName.trim().length < 2;
+    createLoading ||
+    !createForm.displayName.trim() ||
+    createForm.displayName.trim().length < 2 ||
+    (resumeTemplates.length > 0 && !createForm.resumeTemplateId);
 
   useEffect(() => {
     setBaseResumeWorkOpen((prev) =>
@@ -962,6 +1059,7 @@ export default function ManagerProfilesPage() {
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Profile Name</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">CreatedBy</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Updated_at</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Template</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Assigned</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Action</th>
                     </tr>
@@ -990,6 +1088,31 @@ export default function ManagerProfilesPage() {
                           <td className="px-4 py-3 text-sm font-semibold text-slate-900">{profile.displayName}</td>
                           <td className="px-4 py-3 text-sm text-slate-600">{creator?.userName || creator?.name || profile.createdBy || "N/A"}</td>
                           <td className="px-4 py-3 text-sm text-slate-600">{formatDate(profile.updatedAt)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600">
+                            {resumeTemplatesLoading ? (
+                              <span className="text-xs text-slate-500">Loading...</span>
+                            ) : resumeTemplates.length === 0 ? (
+                              <span className="text-xs text-slate-500">No templates</span>
+                            ) : (
+                              <select
+                                value={profile.resumeTemplateId ?? ""}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(event) => handleTemplateChange(profile.id, event.target.value)}
+                                disabled={templateSavingId === profile.id}
+                                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:cursor-wait disabled:opacity-60"
+                              >
+                                <option value="">Select template</option>
+                                {resumeTemplates.map((template) => {
+                                  const usage = templateUsage.get(template.id) ?? template.profileCount ?? 0;
+                                  return (
+                                    <option key={template.id} value={template.id}>
+                                      {template.name} ({usage} profile(s) using)
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-sm text-slate-600">{assignedBidder?.userName || assignedBidder?.name || "Unassigned"}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -2300,6 +2423,38 @@ export default function ManagerProfilesPage() {
                     value={createForm.displayName}
                     onChange={(v) => setCreateForm((f) => ({ ...f, displayName: v }))}
                   />
+                  <div className="md:col-span-2 space-y-1">
+                    <span className="text-xs uppercase tracking-[0.18em] text-slate-600">Resume template</span>
+                    {resumeTemplatesLoading ? (
+                      <div className="text-xs text-slate-500">Loading templates...</div>
+                    ) : resumeTemplates.length === 0 ? (
+                      <div className="text-xs text-slate-500">No templates available yet.</div>
+                    ) : (
+                      <select
+                        value={createForm.resumeTemplateId}
+                        onChange={(e) =>
+                          setCreateForm((f) => ({
+                            ...f,
+                            resumeTemplateId: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                      >
+                        <option value="">Select template</option>
+                        {resumeTemplates.map((template) => {
+                          const usage = templateUsage.get(template.id) ?? template.profileCount ?? 0;
+                          return (
+                            <option key={template.id} value={template.id}>
+                              {template.name} ({usage})
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                    <p className="text-[11px] text-slate-500">
+                      Choose the default resume template for this profile. Usage counts show how many profiles share a template.
+                    </p>
+                  </div>
                   <LabeledInput
                     label="Email"
                     value={createForm.email}
@@ -2472,20 +2627,21 @@ export default function ManagerProfilesPage() {
                   </div>
                   {resumeTemplatesLoading ? (
                     <div className="text-xs text-slate-500">Loading templates...</div>
-                  ) : resumeTemplates.length === 0 ? (
-                    <div className="text-xs text-slate-500">No templates yet.</div>
+                  ) : selectedTemplate ? (
+                    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800">
+                      <span>{selectedTemplate.name}</span>
+                      <span className="text-[11px] font-normal text-slate-500">
+                        Profiles using: {templateUsage.get(selectedTemplate.id) ?? selectedTemplate.profileCount ?? 0}
+                      </span>
+                    </div>
+                  ) : selectedProfile?.resumeTemplateId ? (
+                    <div className="text-xs text-slate-500">
+                      Using template: {selectedProfile.resumeTemplateName || selectedProfile.resumeTemplateId} (loading details)
+                    </div>
                   ) : (
-                    <select
-                      value={resumeTemplateId}
-                      onChange={(event) => setResumeTemplateId(event.target.value)}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm"
-                    >
-                      {resumeTemplates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="text-xs text-red-600">
+                      No template assigned. Set a template in the profiles table.
+                    </div>
                   )}
                 </div>
                 {resumeExportError ? (
@@ -2681,6 +2837,7 @@ export default function ManagerProfilesPage() {
             degree: createForm.degree.trim() || undefined,
             majorField: createForm.majorField.trim() || undefined,
             graduationAt: createForm.graduationAt.trim() || undefined,
+            resumeTemplateId: createForm.resumeTemplateId || undefined,
             baseInfo,
           }),
         },
@@ -3158,6 +3315,7 @@ function formatPhone(contact?: BaseInfo["contact"]) {
 function getEmptyCreateForm() {
   return {
     displayName: "",
+    resumeTemplateId: "",
     firstName: "",
     lastName: "",
     email: "",
