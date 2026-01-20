@@ -19,6 +19,8 @@ type WorkbookEntry = {
   resumeId?: string | null;
   url?: string | null;
   domain?: string | null;
+   company?: string | null;
+   status?: string | null;
   createdAt: string;
   isReviewed?: boolean | null;
   reviewedAt?: string | null;
@@ -46,6 +48,7 @@ export default function WorkbookContent() {
   const [updatingId, setUpdatingId] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [createUrl, setCreateUrl] = useState("");
+  const [createCompany, setCreateCompany] = useState("");
   const [createProfileId, setCreateProfileId] = useState("");
   const [createProfileHint] = useState("");
 
@@ -217,12 +220,14 @@ export default function WorkbookContent() {
           body: JSON.stringify({
             profileId: createProfileId,
             url: createUrl.trim(),
+            company: createCompany.trim() || undefined,
           }),
         },
         token,
       );
       setEntries((prev) => [created, ...prev]);
       setCreateUrl("");
+      setCreateCompany("");
       const selected = profileOptions.find((p) => p.id === createProfileId);  
     } catch (err) {
       console.error(err);
@@ -267,7 +272,7 @@ export default function WorkbookContent() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by ID, URL, profile, bidder, or domain..."
+              placeholder="Search by ID, URL, company, profile, bidder, or domain..."
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
             />
           </label>
@@ -312,11 +317,12 @@ export default function WorkbookContent() {
 
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-auto">
-          <div className="min-w-[1100px]">
-            <div className="grid grid-cols-[160px_120px_1.5fr_1.1fr_1.1fr_1fr_1.2fr] items-center bg-slate-50 px-4 py-3 text-xs uppercase tracking-[0.14em] text-slate-600">
+          <div className="min-w-[1200px]">
+            <div className="grid grid-cols-[160px_120px_1.4fr_1fr_1.1fr_1.1fr_1fr_1.2fr] items-center bg-slate-50 px-4 py-3 text-xs uppercase tracking-[0.14em] text-slate-600">
               <div>ID</div>
               <div>Date</div>
               <div>Job URL</div>
+              <div>Company</div>
               <div>Profile</div>
               <div>Who</div>
               <div>Is reviewed</div>
@@ -339,7 +345,15 @@ export default function WorkbookContent() {
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
                   />
                 </div>
-                <div className="w-full md:w-72">
+                <div className="w-full md:w-64">
+                  <input
+                    value={createCompany}
+                    onChange={(e) => setCreateCompany(e.target.value)}
+                    placeholder="Company"
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300"
+                  />
+                </div>
+                <div className="w-full md:w-64">
                   <select
                     value={createProfileId}
                     onChange={(e) => setCreateProfileId(e.target.value)}
@@ -381,7 +395,7 @@ export default function WorkbookContent() {
                   return (
                     <div
                       key={entry.id}
-                      className="grid grid-cols-[160px_120px_1.5fr_1.1fr_1.1fr_1fr_1.2fr] items-start gap-3 px-4 py-3 text-sm text-slate-800"
+                      className="grid grid-cols-[160px_120px_1.4fr_1fr_1.1fr_1.1fr_1fr_1.2fr] items-start gap-3 px-4 py-3 text-sm text-slate-800"
                     >
                       <div className="space-y-1 font-mono text-xs text-slate-600">
                         <div className="truncate" title={entry.id}>
@@ -408,6 +422,13 @@ export default function WorkbookContent() {
                           </a>
                         ) : (
                           <span className="text-xs text-slate-500">No URL</span>
+                        )}
+                      </div>
+                      <div className="text-slate-800">
+                        {entry.company ? (
+                          <span>{entry.company}</span>
+                        ) : (
+                          <span className="text-xs text-slate-500">Unknown</span>
                         )}
                       </div>
                       <div className="text-slate-800">
@@ -504,6 +525,7 @@ function buildSearchTarget(entry: WorkbookEntry) {
     entry.sessionId,
     entry.url,
     entry.domain,
+    entry.company,
     entry.profileId,
     entry.profileDisplayName,
     entry.bidderUserId,

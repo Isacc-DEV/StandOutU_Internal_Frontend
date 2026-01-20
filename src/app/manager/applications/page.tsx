@@ -19,6 +19,7 @@ type ApplicationSummary = {
   resumeLabel?: string | null;
   url?: string | null;
   domain?: string | null;
+  company?: string | null;
   createdAt: string;
 };
 
@@ -663,6 +664,7 @@ function buildSearchTarget(row: ApplicationSummary) {
     row.resumeLabel,
     row.url,
     row.domain,
+    row.company,
     row.createdAt,
     formatDate(row.createdAt),
   ];
