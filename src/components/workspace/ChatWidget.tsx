@@ -38,7 +38,7 @@ export default function ChatWidget({
           className="group fixed bottom-6 right-6 z-50 flex items-center gap-0 rounded-full bg-indigo-500 p-3 text-white shadow-lg transition-all duration-300 hover:bg-indigo-600 hover:shadow-xl hover:px-4 active:scale-95"
           title="AI Assistant"
         >
-          <MessageCircle className="h-6 w-6 flex-shrink-0" />
+          <MessageCircle className="h-6 w-6 shrink-0" />
           <span className="max-w-0 overflow-hidden whitespace-nowrap text-sm font-medium opacity-0 transition-all duration-300 group-hover:max-w-[120px] group-hover:ml-2 group-hover:opacity-100">
             AI Assistant
           </span>
@@ -46,7 +46,7 @@ export default function ChatWidget({
       )}
 
       {open && (
-        <div className="fixed bottom-6 right-6 z-[9999] flex flex-col h-[50vh] w-full max-w-md rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <div className="fixed bottom-6 right-6 z-9999 flex flex-col h-[50vh] w-full max-w-md rounded-3xl border border-slate-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
             <div className="flex items-center gap-3">
               <MessageCircle className="h-5 w-5 text-indigo-500" />
