@@ -2,8 +2,8 @@
 // Field Filling Logic - Core filling methods for all field types
 // ============================================================================
 
-import { FormField,  } from './types'
-import { GreenhouseInputSimulator } from "./GreenhouseInputSimulator";
+import { FormField } from './types'
+import { DomainInputSimulator } from "./domainInputSimulator";
 
 export class FieldFiller {
   private async wait(ms: number): Promise<void> {
@@ -152,7 +152,7 @@ export class FieldFiller {
   }
   
   private async fillTextInput(element: HTMLInputElement | HTMLTextAreaElement, value: string): Promise<boolean> {
-    await GreenhouseInputSimulator.fillInput(element, value)
+    await DomainInputSimulator.fillInput(element, value)
     return true
   }
   
@@ -161,7 +161,7 @@ export class FieldFiller {
       return await this.selectFirstOption(select)
     }
 
-    const success = await GreenhouseInputSimulator.fillSelect(select, value)
+    const success = await DomainInputSimulator.fillSelect(select, value)
     
     if (!success) {
       return await this.selectFirstOption(select)
@@ -207,14 +207,14 @@ export class FieldFiller {
       let anySuccess = false
       
       for (const item of values) {
-        const success = await GreenhouseInputSimulator.fillReactSelect(input, item, isEnableIndexSelection)
+        const success = await DomainInputSimulator.fillReactSelect(input, item, isEnableIndexSelection)
         anySuccess = anySuccess || success
       }
       
       return anySuccess
     }
     
-    return await GreenhouseInputSimulator.fillReactSelect(input, value, isEnableIndexSelection)
+    return await DomainInputSimulator.fillReactSelect(input, value, isEnableIndexSelection)
   }
   
   private splitMultiSelectValues(value: string): string[] {

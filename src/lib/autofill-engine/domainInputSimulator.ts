@@ -1,4 +1,6 @@
-export class GreenhouseInputSimulator {
+import { GREENHOUSE_SELECTORS } from "./config/domains/greenhouse/selectors.config"
+
+export class DomainInputSimulator {
     private static readonly DEBUG = false
   
     // ========================================================================
@@ -150,7 +152,10 @@ export class GreenhouseInputSimulator {
       this.log('fillReactSelect: Starting', { id: input.id, value, isMulti, isEnableIndexSelection })
 
       // Find select__control parent component from input
-      const selectControl = input.closest('.select__control') as HTMLElement | null
+      const selectControl = this.closestBySelectors(
+        input,
+        GREENHOUSE_SELECTORS.reactSelect.control
+      ) as HTMLElement | null
       
       // Build elements to try: select__control, then its parent (2 components total)
       const elementsToTry: HTMLElement[] = []
@@ -191,7 +196,10 @@ export class GreenhouseInputSimulator {
       // Try clicking each element until dropdown appears
       for (let i = 0; i < elementsToTry.length; i++) {
         const elementToClick = elementsToTry[i]
-        const isSelectControl = elementToClick.classList.contains('select__control')
+        const isSelectControl = this.matchesAnySelector(
+          elementToClick,
+          GREENHOUSE_SELECTORS.reactSelect.control
+        )
         
         this.log(`fillReactSelect: Attempting to open dropdown (attempt ${i + 1}/${elementsToTry.length}):`, {
           element: elementToClick.tagName,
@@ -311,31 +319,35 @@ export class GreenhouseInputSimulator {
     }
 
     private static findReactSelectMenu(input: HTMLInputElement): Element | null {
-      const container = input.closest('.select-shell, .select__container, .select')
+      const container = this.closestBySelectors(
+        input,
+        GREENHOUSE_SELECTORS.reactSelect.container
+      )
       if (!container) {
         this.warn('findReactSelectMenu: Container not found')
         return null
       }
       
-      // Try both React-Select v3/4 and v5+ class names
-      let menu = container.querySelector('.select__menu-list')
-      if (!menu) {
-        menu = container.querySelector('.select_menu-list')
-      }
-      
-      if (menu && this.isVisible(menu)) {
-        this.log('findReactSelectMenu: Menu found', {
-          className: menu.className,
-          role: menu.getAttribute('role')
-        })
-        return menu
+      for (const selector of GREENHOUSE_SELECTORS.reactSelect.menuList) {
+        const menu = container.querySelector(selector)
+        if (menu && this.isVisible(menu)) {
+          this.log('findReactSelectMenu: Menu found', {
+            className: (menu as HTMLElement).className,
+            role: menu.getAttribute('role')
+          })
+          return menu
+        }
       }
       
       return null
     }
   
     private static getReactSelectOptions(menu: Element): HTMLElement[] {
-      const options = menu.querySelectorAll('.select__option')
+      if (GREENHOUSE_SELECTORS.reactSelect.option.length === 0) {
+        return []
+      }
+      const optionSelector = this.joinSelectors(GREENHOUSE_SELECTORS.reactSelect.option)
+      const options = menu.querySelectorAll(optionSelector)
       const visibleOptions = Array.from(options).filter(opt => this.isVisible(opt)) as HTMLElement[]
       
       this.log(`getReactSelectOptions: Found ${visibleOptions.length} visible options`)
@@ -417,8 +429,23 @@ export class GreenhouseInputSimulator {
       return (
         id.includes('[]') ||
         element.getAttribute('aria-multiselectable') === 'true' ||
-        element.closest('.select__value-container--is-multi') !== null
+        this.closestBySelectors(element, GREENHOUSE_SELECTORS.reactSelect.multiValueContainer) !== null
       )
+    }
+
+    private static matchesAnySelector(element: Element, selectors: string[]): boolean {
+      return selectors.some((selector) => element.matches(selector))
+    }
+
+    private static closestBySelectors(element: Element, selectors: string[]): Element | null {
+      if (selectors.length === 0) {
+        return null
+      }
+      return element.closest(this.joinSelectors(selectors))
+    }
+
+    private static joinSelectors(selectors: string[]): string {
+      return selectors.join(', ')
     }
 
     private static normalizeSelectText(value: string): string {

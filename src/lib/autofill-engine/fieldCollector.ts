@@ -3,9 +3,34 @@
 // ============================================================================
 
 import { FormField, FieldType } from './types'
-import { matchGreenhouseField } from './greenhouseFieldMatchers'
+import { matchDomainField } from './domainFieldMatchers'
+import { GREENHOUSE_SELECTORS } from './config/domains/greenhouse/selectors.config'
 
 export class FieldCollector {
+  private readonly selectors = GREENHOUSE_SELECTORS
+
+  private joinSelectors(selectors: string[]): string {
+    return selectors.join(', ')
+  }
+
+  private matchesAnySelector(element: Element, selectors: string[]): boolean {
+    return selectors.some((selector) => element.matches(selector))
+  }
+
+  private closestBySelectors(element: Element, selectors: string[]): Element | null {
+    if (selectors.length === 0) {
+      return null
+    }
+    return element.closest(this.joinSelectors(selectors))
+  }
+
+  private querySelectorByList(container: ParentNode, selectors: string[]): Element | null {
+    if (selectors.length === 0) {
+      return null
+    }
+    return container.querySelector(this.joinSelectors(selectors))
+  }
+
   private async parseCheckboxGroup(fieldset: Element): Promise<FormField | null> {
     const checkboxes = fieldset.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
     if (checkboxes.length === 0) return null
@@ -27,7 +52,7 @@ export class FieldCollector {
       
       // If still not found, try parent's nextElementSibling (for wrapper structures)
       if (!cbLabel) {
-        const wrapper = cb.closest('.checkbox__wrapper')
+        const wrapper = this.closestBySelectors(cb, this.selectors.fieldCollector.checkboxWrappers)
         if (wrapper) {
           cbLabel = wrapper.querySelector('label')?.textContent?.trim()
         }
@@ -107,9 +132,9 @@ export class FieldCollector {
       return this.cleanLabelText(ariaLabel)
     }
     
-    const container = element.closest('.form-group, .field, .input-wrapper, .select-shell, .select__container, [class*="question"]')
+    const container = this.closestBySelectors(element, this.selectors.fieldCollector.labelContainers)
     if (container) {
-      const label = container.querySelector('label, legend, .label, h1, h2, h3, h4, h5, h6')
+      const label = this.querySelectorByList(container, this.selectors.fieldCollector.labelElements)
       if (label?.textContent) {
         return this.cleanLabelText(label.textContent)
       }
@@ -133,7 +158,7 @@ export class FieldCollector {
   }
   
   private generateFieldKey(element: HTMLElement): string | null {
-    return matchGreenhouseField(element)
+    return matchDomainField(element)
   }
   
   private determineFieldType(element: HTMLElement): FieldType | null {
@@ -164,10 +189,7 @@ export class FieldCollector {
   }
   
   private isReactSelectInput(element: HTMLElement): element is HTMLInputElement {
-    return element instanceof HTMLInputElement && (
-      element.classList.contains('select__input') ||
-      (element.getAttribute('role') === 'combobox' && element.getAttribute('aria-autocomplete') === 'list')
-    )
+    return element instanceof HTMLInputElement && this.matchesAnySelector(element, this.selectors.reactSelect.input)
   }
   
   private isMultiSelectInput(element: HTMLElement): boolean {
@@ -175,15 +197,22 @@ export class FieldCollector {
     return (
       id.includes('[]') ||
       element.getAttribute('aria-multiselectable') === 'true' ||
-      element.closest('.select__value-container--is-multi') !== null
+      this.closestBySelectors(element, this.selectors.reactSelect.multiValueContainer) !== null
     )
   }
   
   private isFieldRequired(element: HTMLElement): boolean {
+    const container = this.closestBySelectors(element, this.selectors.fieldCollector.labelContainers)
+    const requiredSelector = this.selectors.fieldCollector.requiredIndicators
+    const hasRequiredIndicator = Boolean(
+      container &&
+      requiredSelector.length > 0 &&
+      container.querySelector(this.joinSelectors(requiredSelector))
+    )
     return (
       element.hasAttribute('required') ||
       element.getAttribute('aria-required') === 'true' ||
-      element.closest('.form-group, .field')?.querySelector('.required, .asterisk, [aria-label*="required"]') !== null
+      hasRequiredIndicator
     )
   }
   
@@ -214,7 +243,7 @@ export class FieldCollector {
           
           // If still not found, try parent's nextElementSibling (for wrapper structures)
           if (!label) {
-            const wrapper = cb.closest('.checkbox__wrapper')
+            const wrapper = this.closestBySelectors(cb, this.selectors.fieldCollector.checkboxWrappers)
             if (wrapper) {
               label = wrapper.querySelector('label')?.textContent?.trim()
             }
@@ -236,7 +265,7 @@ export class FieldCollector {
     try {
       this.log('extractReactSelectOptions: Starting', { id: input.id })
       
-      const selectControl = input.closest('.select__control') as HTMLElement | null
+      const selectControl = this.closestBySelectors(input, this.selectors.reactSelect.control) as HTMLElement | null
       
       const elementsToTry: HTMLElement[] = []
       
@@ -292,7 +321,13 @@ export class FieldCollector {
         return undefined
       }
       
-      const optionElements = menu.querySelectorAll('.select__option')
+      if (this.selectors.reactSelect.option.length === 0) {
+        this.warn('extractReactSelectOptions: No option selectors configured')
+        return undefined
+      }
+
+      const optionSelector = this.joinSelectors(this.selectors.reactSelect.option)
+      const optionElements = menu.querySelectorAll(optionSelector)
       const options = Array.from(optionElements)
         .filter(opt => this.isVisible(opt))
         .map(opt => opt.textContent?.trim() || '')
@@ -317,18 +352,16 @@ export class FieldCollector {
   }
   
   private findReactSelectMenu(input: HTMLInputElement): Element | null {
-    const container = input.closest('.select-shell, .select__container, .select')
+    const container = this.closestBySelectors(input, this.selectors.reactSelect.container)
     if (!container) {
       return null
     }
     
-    let menu = container.querySelector('.select__menu-list')
-    if (!menu) {
-      menu = container.querySelector('.select_menu-list')
-    }
-    
-    if (menu && this.isVisible(menu)) {
-      return menu
+    for (const selector of this.selectors.reactSelect.menuList) {
+      const menu = container.querySelector(selector)
+      if (menu && this.isVisible(menu)) {
+        return menu
+      }
     }
     
     return null
@@ -353,17 +386,7 @@ export class FieldCollector {
   private warn(_message: string, ..._args: any[]) {}
   
   async collectAllFormFields(): Promise<FormField[]> {
-    const selector = [
-      'input[type="text"]:not([type="hidden"])',
-      'input[type="email"]',
-      'input[type="tel"]',
-      'input[type="url"]',
-      'input[type="number"]',
-      'input[type="checkbox"]',
-      'input[type="radio"]',
-      'textarea',
-      'select'
-    ].join(', ')
+    const selector = this.joinSelectors(this.selectors.fieldCollector.formFields)
     
     const elements = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(selector)
     this.log(`Found ${elements.length} form elements matching selector`)

@@ -11,13 +11,13 @@ import type {
 import type { AutofillRuntimeResult } from "@/lib/autofill-engine/webview";
 import {
   buildAutofillScript,
-  buildCollectGreenhouseQuestionsScript,
+  buildCollectDomainQuestionsScript,
   buildWorkspaceAutofillProfile,
 } from "@/lib/autofill-engine/webview";
 import type {
   AIQuestionResponse,
-  GreenhouseAiQuestionPayload,
-} from "@/lib/autofill-engine/greenhouse/greenhouseQuestionHandler";
+  DomainAiQuestionPayload,
+} from "@/lib/autofill-engine/domainQuestionHandler";
 
 type UseWorkspaceAutofillOptions = {
   api: (path: string, init?: RequestInit) => Promise<unknown>;
@@ -51,7 +51,7 @@ export function useWorkspaceAutofill({
   setSession,
   showError,
 }: UseWorkspaceAutofillOptions) {
-  type GreenhouseAiResponse = {
+  type DomainAiResponse = {
     answers: AIQuestionResponse[];
   };
   const runtimeSourceRef = useRef<string | null>(null);
@@ -121,7 +121,7 @@ export function useWorkspaceAutofill({
 
           if (webviewRef.current) {
             try {
-              const collectScript = buildCollectGreenhouseQuestionsScript(
+              const collectScript = buildCollectDomainQuestionsScript(
                 autofillProfile,
                 { engineMode: "auto" },
                 runtimeUrl,
@@ -130,7 +130,7 @@ export function useWorkspaceAutofill({
               const aiQuestions = (await webviewRef.current.executeJavaScript(
                 collectScript,
                 true
-              )) as GreenhouseAiQuestionPayload[] | undefined;
+              )) as DomainAiQuestionPayload[] | undefined;
               if (Array.isArray(aiQuestions) && aiQuestions.length > 0) {
                 debug("requesting greenhouse AI answers", { count: aiQuestions.length });
                 const aiResponse = (await api("/autofill/greenhouse-ai", {
@@ -139,7 +139,7 @@ export function useWorkspaceAutofill({
                     questions: aiQuestions,
                     profile: autofillProfile,
                   }),
-                })) as GreenhouseAiResponse;
+                })) as DomainAiResponse;
                 if (Array.isArray(aiResponse?.answers)) {
                   aiAnswerOverrides = aiResponse.answers;
                   debug("received greenhouse AI answers", { count: aiAnswerOverrides.length });

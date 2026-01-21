@@ -1,8 +1,8 @@
 import { Profile } from "./profile";
 import { FIELD_MATCHERS, matchField } from "./fieldMatchers";
 import { CommonInputSimulator } from "./inputSimulator";
-import { greenhouseEngine } from "./greenhouse";
-import type { AIQuestionResponse } from "./greenhouse/greenhouseQuestionHandler";
+import { domainEngine } from "./domainEngine";
+import type { AIQuestionResponse } from "./domainQuestionHandler";
 
 export type AutofillEngine = 'auto' | 'common' | 'greenhouse'
 
@@ -20,22 +20,22 @@ export class AutofillEngineClass {
   }
   
   setOpenAIKey(apiKey: string) {
-    greenhouseEngine.setOpenAIKey(apiKey);
+    domainEngine.setOpenAIKey(apiKey);
   }
 
   setAIAnswerOverrides(responses: AIQuestionResponse[] | null) {
-    greenhouseEngine.setAIAnswerOverrides(responses);
+    domainEngine.setAIAnswerOverrides(responses);
   }
 
-  async collectGreenhouseAIQuestions() {
+  async collectDomainAIQuestions() {
     if (!this.profile) {
       return [];
     }
-    if (this.engineMode !== "greenhouse" && !this.isGreenhousePage()) {
+    if (this.engineMode !== "greenhouse" && !this.isTargetDomainPage()) {
       return [];
     }
-    greenhouseEngine.setProfile(this.profile);
-    return greenhouseEngine.collectAIQuestions();
+    domainEngine.setProfile(this.profile);
+    return domainEngine.collectAIQuestions();
   }
   
   async autofillPage() {
@@ -48,7 +48,7 @@ export class AutofillEngineClass {
     
     // Check for Greenhouse iframe redirect before anything else
     try {
-      this.isGreenhousePage();
+      this.isTargetDomainPage();
     } catch (error: any) {
       if (error.message === "GREENHOUSE_IFRAME_REDIRECT") {
         console.log("[AutofillEngine] Redirected to Greenhouse iframe, stopping autofill");
@@ -60,8 +60,8 @@ export class AutofillEngineClass {
     // Force Greenhouse engine if mode is 'greenhouse'
     if (this.engineMode === "greenhouse") {
       console.log("[AutofillEngine] Forcing Greenhouse engine (mode: greenhouse)");
-      greenhouseEngine.setProfile(this.profile);
-      const result = await greenhouseEngine.autofillGreenhousePage();
+      domainEngine.setProfile(this.profile);
+      const result = await domainEngine.autofillDomainPage();
       return {
         filledCount: result.filledCount,
         totalFields: result.totalFields,
@@ -78,10 +78,10 @@ export class AutofillEngineClass {
     }
     
     // Auto mode: detect page type
-    if (this.isGreenhousePage()) {
+    if (this.isTargetDomainPage()) {
       console.log("[AutofillEngine] Detected Greenhouse page (mode: auto)");
-      greenhouseEngine.setProfile(this.profile);
-      const result = await greenhouseEngine.autofillGreenhousePage();
+      domainEngine.setProfile(this.profile);
+      const result = await domainEngine.autofillDomainPage();
       return {
         filledCount: result.filledCount,
         totalFields: result.totalFields,
@@ -96,7 +96,7 @@ export class AutofillEngineClass {
     return await this.defaultAutofill();
   }
   
-  private isGreenhousePage(): boolean {
+  private isTargetDomainPage(): boolean {
     const url = window.location.href.toLowerCase();
     
     // Check for embedded Greenhouse iframe with different domain

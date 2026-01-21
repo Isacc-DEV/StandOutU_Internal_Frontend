@@ -75,7 +75,7 @@ ${runtimeSource}
   })()`;
 }
 
-export function buildCollectGreenhouseQuestionsScript(
+export function buildCollectDomainQuestionsScript(
   profile: AutofillProfile,
   options?: AutofillRuntimeOptions,
   runtimeUrl?: string,
@@ -102,7 +102,7 @@ ${runtimeSource}
     const config = ${config};
     const runtimeUrl = ${runtimeUrlJson};
     const ensureRuntime = async () => {
-      if (typeof window.autofillCollectGreenhouseQuestions === "function") return;
+      if (typeof window.autofillCollectDomainQuestions === "function") return;
       if (runtimeUrl) {
         const existing = document.querySelector('script[data-smartwork-autofill="runtime"]');
         if (!existing) {
@@ -125,23 +125,23 @@ ${runtimeSource}
           });
         }
       }
-      if (typeof window.autofillCollectGreenhouseQuestions !== "function") {
+      if (typeof window.autofillCollectDomainQuestions !== "function") {
         ${runtimeBootstrap}
         if (
-          typeof window.autofillCollectGreenhouseQuestions !== "function" &&
-          typeof autofillCollectGreenhouseQuestions === "function"
+          typeof window.autofillCollectDomainQuestions !== "function" &&
+          typeof autofillCollectDomainQuestions === "function"
         ) {
-          window.autofillCollectGreenhouseQuestions = autofillCollectGreenhouseQuestions;
+          window.autofillCollectDomainQuestions = autofillCollectDomainQuestions;
         }
       }
-      if (typeof window.autofillCollectGreenhouseQuestions !== "function") {
+      if (typeof window.autofillCollectDomainQuestions !== "function") {
         throw new Error("Autofill runtime script did not load.");
       }
     };
     await ensureRuntime();
     const collectFn =
-      typeof window.autofillCollectGreenhouseQuestions === "function"
-        ? window.autofillCollectGreenhouseQuestions
+      typeof window.autofillCollectDomainQuestions === "function"
+        ? window.autofillCollectDomainQuestions
         : null;
     if (!collectFn) {
       throw new Error("Autofill question collector unavailable.");
