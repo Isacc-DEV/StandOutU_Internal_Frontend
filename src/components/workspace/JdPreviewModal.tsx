@@ -1,6 +1,6 @@
 import { Play, RefreshCw, X } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
-import type { BaseResume } from "../types";
+import type { BaseResume } from "@/app/workspace/types";
 
 type JdPreviewModalProps = {
   open: boolean;

@@ -1,5 +1,5 @@
 import { Download, Radio, RefreshCw, X } from "lucide-react";
-import type { Profile } from "../types";
+import type { Profile } from "@/app/workspace/types";
 
 type ResumePreviewModalProps = {
   open: boolean;

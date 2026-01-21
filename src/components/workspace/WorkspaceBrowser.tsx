@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, RefreshCw, Radio } from "lucide-react";
 import type { Ref } from "react";
-import type { WebviewHandle } from "../types";
+import type { WebviewHandle } from "@/app/workspace/types";
+import WorkspaceAutofillOverlay from "./WorkspaceAutofillOverlay";
 
 type WorkspaceBrowserProps = {
   onGoBack: () => void;
@@ -42,11 +43,11 @@ export default function WorkspaceBrowser({
   webviewPartition,
 }: WorkspaceBrowserProps) {
   return (
-    <section className="flex flex-col gap-2 bg-gradient-to-br from-slate-50 via-white to-slate-100 rounded-2xl xl:ml-[280px] min-h-[calc(100vh-57px)] max-h-[calc(100vh-57px)] overflow-auto">
+    <section className="flex flex-col gap-2 bg-linear-to-br from-slate-50 via-white to-slate-100 rounded-2xl xl:ml-[280px] min-h-[calc(100vh-57px)] max-h-[calc(100vh-57px)] overflow-auto">
       <div className="mx-auto flex w-full flex-1 min-h-0 flex-col ">
         <div className="relative border-b-2 p-2 border-slate-200 bg-slate-50/50">
           <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="flex gap-2 sm:flex-shrink-0">
+            <div className="flex gap-2 sm:shrink-0">
               <button
                 onClick={onGoBack}
                 disabled={!canGoBack}
@@ -89,7 +90,7 @@ export default function WorkspaceBrowser({
                 className="w-full rounded-3xl bg-gray-300 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20"
               />
             </div>
-            <div className="flex gap-2 sm:flex-shrink-0">
+            <div className="flex gap-2 sm:shrink-0">
               <button
                 onClick={onCheck}
                 disabled={!canCheck}
@@ -115,7 +116,12 @@ export default function WorkspaceBrowser({
                   key={browserSrc}
                   src={browserSrc}
                   partition={webviewPartition}
+                  webpreferences="allowRunningInsecureContent=yes, webSecurity=no"
                   style={{ height: "100%", minHeight: "calc(100vh - 70px)", width: "100%", backgroundColor: "#ffffff" }}
+                />
+                <WorkspaceAutofillOverlay
+                  visible={loadingAction === "autofill"}
+                  url={browserSrc}
                 />
               </div>
             ) : (
@@ -127,6 +133,10 @@ export default function WorkspaceBrowser({
                   style={{ backgroundColor: "#ffffff" }}
                   allowFullScreen
                   referrerPolicy="no-referrer"
+                />
+                <WorkspaceAutofillOverlay
+                  visible={loadingAction === "autofill"}
+                  url={browserSrc}
                 />
                 <div className="absolute top-2 right-2 flex gap-2">
                   <a
@@ -143,7 +153,7 @@ export default function WorkspaceBrowser({
           ) : (
             <div className="flex h-full min-h-[calc(100vh-70px)] flex-1 items-center justify-center text-slate-600">
               <div className="text-center space-y-2">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-indigo-100 to-cyan-100 mb-2">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-linear-to-br from-indigo-100 to-cyan-100 mb-2">
                   <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                   </svg>

@@ -104,3 +104,49 @@ export async function api<T = unknown>(
   }
   return res.json() as Promise<T>;
 }
+
+export async function workspaceApi<T = unknown>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const token =
+    typeof window !== 'undefined' ? window.localStorage.getItem('smartwork_token') : null;
+  const headers: Record<string, string> = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  if (init?.body && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      cache: 'no-store',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Network error contacting API (${API_BASE || 'unknown'}): ${message}`);
+  }
+  if (!res.ok) {
+    if (res.status === 401) {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('smartwork_token');
+        window.localStorage.removeItem('smartwork_user');
+        window.location.href = '/auth';
+      }
+      throw new Error('Unauthorized');
+    }
+    const text = await res.text();
+    let message = text || res.statusText;
+    try {
+      const parsed = JSON.parse(text) as { message?: string };
+      if (parsed?.message) message = parsed.message;
+    } catch {
+      // Ignore JSON parse errors and show raw text.
+    }
+    throw new Error(message);
+  }
+  return res.json() as Promise<T>;
+}

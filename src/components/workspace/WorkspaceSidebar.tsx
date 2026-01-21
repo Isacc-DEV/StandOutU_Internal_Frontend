@@ -1,6 +1,6 @@
 import { FileText, RefreshCw, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
-import type { BaseInfo, Profile } from "../types";
+import type { BaseInfo, Profile } from "@/app/workspace/types";
 
 type WorkspaceSidebarProps = {
   profiles: Profile[];
