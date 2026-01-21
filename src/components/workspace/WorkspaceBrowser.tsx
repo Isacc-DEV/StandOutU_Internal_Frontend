@@ -115,6 +115,7 @@ export default function WorkspaceBrowser({
                   key={browserSrc}
                   src={browserSrc}
                   partition={webviewPartition}
+                  webpreferences="allowRunningInsecureContent=yes, webSecurity=no"
                   style={{ height: "100%", minHeight: "calc(100vh - 70px)", width: "100%", backgroundColor: "#ffffff" }}
                 />
               </div>

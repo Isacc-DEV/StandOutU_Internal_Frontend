@@ -74,6 +74,8 @@ export default function Page() {
   );
   const [navigationStarted, setNavigationStarted] = useState(false);
   const [loadedUrl, setLoadedUrl] = useState<string>("");
+  const autoGoUrlRef = useRef<string>("");
+  const lastQueryUrlRef = useRef<string>("");
 
   const router = useRouter();
   const isClient = typeof window !== "undefined";
@@ -318,6 +320,14 @@ export default function Page() {
     ]
   );
 
+  useEffect(() => {
+    if (!jobUrlFromQuery) return;
+    if (lastQueryUrlRef.current === jobUrlFromQuery) return;
+    lastQueryUrlRef.current = jobUrlFromQuery;
+    setHasEditedUrl(false);
+    setUrl(jobUrlFromQuery);
+  }, [jobUrlFromQuery]);
+
 
   const { handleGo, handleRefresh } = useWorkspaceNavigation({
     api,
@@ -335,6 +345,25 @@ export default function Page() {
     showError,
     refreshMetrics,
   });
+
+  useEffect(() => {
+    if (!jobUrlFromQuery) return;
+    if (!user || !selectedProfileId) return;
+    if (loadingAction === "go") return;
+    if (hasEditedUrl) return;
+    const trimmed = jobUrlFromQuery.trim();
+    if (!trimmed) return;
+    if (autoGoUrlRef.current === trimmed) return;
+    autoGoUrlRef.current = trimmed;
+    void handleGo();
+  }, [
+    handleGo,
+    hasEditedUrl,
+    jobUrlFromQuery,
+    loadingAction,
+    selectedProfileId,
+    user,
+  ]);
 
   const { handleCheck } = useWorkspaceCheck({
     api,
@@ -356,6 +385,7 @@ export default function Page() {
   const { handleAutofill } = useWorkspaceAutofill({
     api,
     session,
+    selectedProfile,
     isElectron,
     browserSrc,
     webviewRef,

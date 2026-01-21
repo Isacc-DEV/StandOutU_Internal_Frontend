@@ -271,21 +271,37 @@ export function useWorkspaceWebview({
     };
 
     const handleConsoleMessage = (evt: Event) => {
-      const anyEvt = evt as unknown as { message?: string };
+      const anyEvt = evt as unknown as {
+        message?: string;
+        level?: number;
+        sourceId?: string;
+        line?: number;
+      };
       const msg = (anyEvt.message || "").toString();
       if (!msg) return;
-      if (!msg.includes("[smartwork]")) return;
-      if (msg.includes("hotkey")) {
-        const keyMatch = msg.match(/key=([a-z]+)/i);
-        const key = keyMatch?.[1];
-        if (key) {
-          handleHotkey({
-            key,
-            ctrlKey: true,
-            shiftKey: true,
-          });
+      if (msg.includes("[smartwork]")) {
+        if (msg.includes("hotkey")) {
+          const keyMatch = msg.match(/key=([a-z]+)/i);
+          const key = keyMatch?.[1];
+          if (key) {
+            handleHotkey({
+              key,
+              ctrlKey: true,
+              shiftKey: true,
+            });
+          }
         }
+        return;
       }
+      const autofillMarkers = ["[AI Prompt]", "[AI Response]"];
+      if (!autofillMarkers.some((marker) => msg.includes(marker))) {
+        return;
+      }
+      const location =
+        anyEvt.sourceId && anyEvt.line
+          ? ` (${anyEvt.sourceId}:${anyEvt.line})`
+          : "";
+      console.log(`[webview] ${msg}${location}`);
     };
 
     const messageHandler = (evt: MessageEvent) => {

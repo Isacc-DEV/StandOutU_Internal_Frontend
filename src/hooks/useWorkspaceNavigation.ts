@@ -41,12 +41,39 @@ export function useWorkspaceNavigation({
   showError,
   refreshMetrics,
 }: UseWorkspaceNavigationOptions) {
+  const normalizeWorkspaceUrl = (rawUrl: string): string | null => {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return null;
+    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    try {
+      return new URL(withScheme).toString();
+    } catch {
+      return null;
+    }
+  };
+
   const handleGo = useCallback(async () => {
-    if (!user || !selectedProfileId || !url) return;
+    if (!user) {
+      showError("Please sign in to continue.");
+      return;
+    }
+    if (!selectedProfileId) {
+      showError("Select a profile before opening a job URL.");
+      return;
+    }
+    if (!url.trim()) {
+      showError("Enter a job URL to continue.");
+      return;
+    }
+    const normalizedUrl = normalizeWorkspaceUrl(url);
+    if (!normalizedUrl) {
+      showError("Please enter a valid URL (include domain).");
+      return;
+    }
     setLoadingAction("go");
     setCheckEnabled(false);
     setNavigationStarted(true);
-    setLoadedUrl(url);
+    setLoadedUrl(normalizedUrl);
     try {
       const newSession: ApplicationSession = await withTimeout(
         api<ApplicationSession>("/sessions", {
@@ -54,7 +81,7 @@ export function useWorkspaceNavigation({
           body: JSON.stringify({
             bidderUserId: user.id,
             profileId: selectedProfileId,
-            url,
+            url: normalizedUrl,
           }),
         }),
         CONNECT_TIMEOUT_MS,
