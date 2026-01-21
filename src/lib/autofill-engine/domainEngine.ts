@@ -1,21 +1,21 @@
 // ============================================================================
-// Greenhouse Engine - Main autofill orchestrator
+// Domain Engine - Main autofill orchestrator
 // ============================================================================
 
-import { Profile } from "../profile";
+import { Profile } from "./profile";
 import { FillResult, FormField } from './types'
-import { AIQuestionResponse, GreenhouseAiQuestionPayload, greenhouseQuestionHandler } from './greenhouseQuestionHandler'
+import { AIQuestionResponse, DomainAiQuestionPayload, domainQuestionHandler } from './domainQuestionHandler'
 import { fieldCollector } from './fieldCollector'
 import { fieldCategorizer } from './fieldCategorizer'
 import { standardFieldsHandler } from './standardFieldsHandler'
 import { educationFieldsHandler } from './educationFieldsHandler'
 import { customQuestionsHandler } from './customQuestionsHandler'
-import { GREENHOUSE_FIELD_MATCHERS } from './greenhouseFieldMatchers'
+import { DOMAIN_FIELD_MATCHERS } from './domainFieldMatchers'
 import { fieldFiller } from './fieldFiller'
 
 const log = (_message: string, _data?: Record<string, unknown>) => {}
 
-export class GreenhouseEngine {
+export class DomainEngine {
   private profile: Profile | null = null
   
   setProfile(profile: Profile) {
@@ -23,14 +23,14 @@ export class GreenhouseEngine {
   }
   
   setOpenAIKey(apiKey: string) {
-    greenhouseQuestionHandler.setApiKey(apiKey)
+    domainQuestionHandler.setApiKey(apiKey)
   }
 
   setAIAnswerOverrides(responses: AIQuestionResponse[] | null) {
-    greenhouseQuestionHandler.setAnswerOverrides(responses)
+    domainQuestionHandler.setAnswerOverrides(responses)
   }
 
-  async collectAIQuestions(): Promise<GreenhouseAiQuestionPayload[]> {
+  async collectAIQuestions(): Promise<DomainAiQuestionPayload[]> {
     if (!this.profile) {
       return []
     }
@@ -42,7 +42,7 @@ export class GreenhouseEngine {
     return customQuestionsHandler.collectAIQuestions(allCustomFields, this.profile)
   }
   
-  async autofillGreenhousePage(): Promise<FillResult & { aiQuestionsHandled: number }> {
+  async autofillDomainPage(): Promise<FillResult & { aiQuestionsHandled: number }> {
     if (!this.profile) {
       log('start: missing profile')
       return { filledCount: 0, totalFields: 0, unmatchedCount: 0, aiQuestionsHandled: 0 }
@@ -108,7 +108,7 @@ export class GreenhouseEngine {
     for (const field of standardFields) {
       if (!field.key) continue
       
-      const matcher = GREENHOUSE_FIELD_MATCHERS[field.key]
+      const matcher = DOMAIN_FIELD_MATCHERS[field.key]
       if (!matcher) continue
       
       const value = matcher.getValue(profile)
@@ -146,4 +146,4 @@ export class GreenhouseEngine {
   }
 }
 
-export const greenhouseEngine = new GreenhouseEngine()
+export const domainEngine = new DomainEngine()

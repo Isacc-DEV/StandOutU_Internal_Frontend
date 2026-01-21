@@ -1,13 +1,13 @@
-import { autofillCollectGreenhouseQuestions, autofillRuntime } from "./runtime";
+import { autofillCollectDomainQuestions, autofillRuntime } from "./runtime";
 
 declare global {
   interface Window {
     autofillRuntime?: typeof autofillRuntime;
-    autofillCollectGreenhouseQuestions?: typeof autofillCollectGreenhouseQuestions;
+    autofillCollectDomainQuestions?: typeof autofillCollectDomainQuestions;
   }
 }
 
 if (typeof window !== "undefined") {
   window.autofillRuntime = autofillRuntime;
-  window.autofillCollectGreenhouseQuestions = autofillCollectGreenhouseQuestions;
+  window.autofillCollectDomainQuestions = autofillCollectDomainQuestions;
 }

@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { FormField, FillResult } from './types'
-import { Profile } from "../profile";
+import { Profile } from "./profile";
 import { fieldFiller } from './fieldFiller'
 
 const log = (_message: string, _data?: Record<string, unknown>) => {}

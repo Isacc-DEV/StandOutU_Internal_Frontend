@@ -52,7 +52,7 @@ export function useWorkspaceNavigation({
     }
   };
 
-  const handleGo = useCallback(async () => {
+  const handleGo = useCallback(async (nextUrl?: string) => {
     if (!user) {
       showError("Please sign in to continue.");
       return;
@@ -61,11 +61,12 @@ export function useWorkspaceNavigation({
       showError("Select a profile before opening a job URL.");
       return;
     }
-    if (!url.trim()) {
+    const targetUrl = typeof nextUrl === "string" ? nextUrl : url;
+    if (!targetUrl.trim()) {
       showError("Enter a job URL to continue.");
       return;
     }
-    const normalizedUrl = normalizeWorkspaceUrl(url);
+    const normalizedUrl = normalizeWorkspaceUrl(targetUrl);
     if (!normalizedUrl) {
       showError("Please enter a valid URL (include domain).");
       return;

@@ -2,18 +2,28 @@ import { ChevronLeft, ChevronRight, RefreshCw, Radio } from "lucide-react";
 import type { Ref } from "react";
 import type { WebviewHandle } from "@/app/workspace/types";
 import WorkspaceAutofillOverlay from "./WorkspaceAutofillOverlay";
+import WorkspaceTabsBar from "./WorkspaceTabsBar";
 
 type WorkspaceBrowserProps = {
   onGoBack: () => void;
   onGoForward: () => void;
   onRefresh: () => void;
-  onGo: () => void | Promise<void>;
+  onGo: (nextUrl?: string) => void | Promise<void>;
   onCheck: () => void;
   canGoBack: boolean;
   canGoForward: boolean;
   canCheck: boolean;
   loadingAction: string;
+  isNavigating: boolean;
   selectedProfileId: string;
+  tabs: { id: string; url?: string; title?: string }[];
+  activeTabId: string | null;
+  onSelectTab: (tabId: string) => void;
+  onAddTab: () => void;
+  onCloseTab: (tabId: string) => void;
+  onDuplicateTab: (tabId: string) => void;
+  tabType: "links" | "profiles";
+  onTabTypeChange: (value: "links" | "profiles") => void;
   url: string;
   onUrlChange: (value: string) => void;
   navigationStarted: boolean;
@@ -33,7 +43,16 @@ export default function WorkspaceBrowser({
   canGoForward,
   canCheck,
   loadingAction,
+  isNavigating,
   selectedProfileId,
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onAddTab,
+  onCloseTab,
+  onDuplicateTab,
+  tabType,
+  onTabTypeChange,
   url,
   onUrlChange,
   navigationStarted,
@@ -45,6 +64,16 @@ export default function WorkspaceBrowser({
   return (
     <section className="flex flex-col gap-2 bg-linear-to-br from-slate-50 via-white to-slate-100 rounded-2xl xl:ml-[280px] min-h-[calc(100vh-57px)] max-h-[calc(100vh-57px)] overflow-auto">
       <div className="mx-auto flex w-full flex-1 min-h-0 flex-col ">
+        <WorkspaceTabsBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={onSelectTab}
+          onAddTab={onAddTab}
+          onCloseTab={onCloseTab}
+          onDuplicateTab={onDuplicateTab}
+          tabType={tabType}
+          onTabTypeChange={onTabTypeChange}
+        />
         <div className="relative border-b-2 p-2 border-slate-200 bg-slate-50/50">
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="flex gap-2 sm:shrink-0">
@@ -66,11 +95,11 @@ export default function WorkspaceBrowser({
               </button>
               <button
                 onClick={onRefresh}
-                disabled={loadingAction === "go" || !selectedProfileId}
+                disabled={isNavigating || !selectedProfileId}
                 className="min-w-[40px] rounded-lg bg-transparent px-3 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-200 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
                 title={navigationStarted ? "Refresh" : "Connect"}
               >
-                <RefreshCw className={`h-4 w-4 ${loadingAction === "go" ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-4 w-4 ${isNavigating ? "animate-spin" : ""}`} />
                 <span className="sr-only">
                   {navigationStarted ? "Refresh" : "Connect"}
                 </span>

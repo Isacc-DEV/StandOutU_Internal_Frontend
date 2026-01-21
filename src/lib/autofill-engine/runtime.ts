@@ -1,5 +1,5 @@
 import { autofillEngine } from "./index";
-import type { AIQuestionResponse, GreenhouseAiQuestionPayload } from "./greenhouse/greenhouseQuestionHandler";
+import type { AIQuestionResponse, DomainAiQuestionPayload } from "./domainQuestionHandler";
 import type { Profile } from "./profile";
 
 export type AutofillRuntimeOptions = {
@@ -124,10 +124,10 @@ export async function autofillRuntime(
   }
 }
 
-export async function autofillCollectGreenhouseQuestions(
+export async function autofillCollectDomainQuestions(
   profileInput: Profile | null | undefined,
   optionsInput?: AutofillRuntimeOptions
-): Promise<GreenhouseAiQuestionPayload[]> {
+): Promise<DomainAiQuestionPayload[]> {
   const profile = normalizeProfile(profileInput);
   const options = optionsInput ?? {};
   const engineMode =
@@ -135,5 +135,5 @@ export async function autofillCollectGreenhouseQuestions(
 
   autofillEngine.setProfile(profile);
   autofillEngine.setEngineMode(engineMode);
-  return autofillEngine.collectGreenhouseAIQuestions();
+  return autofillEngine.collectDomainAIQuestions();
 }

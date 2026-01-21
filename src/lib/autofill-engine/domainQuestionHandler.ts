@@ -1,6 +1,6 @@
-import { Profile } from "../profile";
+import { Profile } from "./profile";
 
-export interface GreenhouseQuestion {
+export interface DomainQuestion {
   id: string
   type: 'text' | 'textarea' | 'select' | 'multi_value_single_select' | 'checkbox' | 'file'
   label: string
@@ -9,9 +9,9 @@ export interface GreenhouseQuestion {
   options?: string[]
 }
 
-export interface GreenhouseAiQuestionPayload {
+export interface DomainAiQuestionPayload {
   id: string
-  type: GreenhouseQuestion['type']
+  type: DomainQuestion['type']
   label: string
   required: boolean
   options?: string[]
@@ -24,7 +24,7 @@ export interface AIQuestionResponse {
   selectedIndices?: number[]
 }
 
-export class GreenhouseQuestionHandler {
+export class DomainQuestionHandler {
   private openaiApiKey: string | null = null
   private answerOverrides: AIQuestionResponse[] | null = null
   
@@ -55,7 +55,7 @@ export class GreenhouseQuestionHandler {
     return overrides
   }
   
-  async analyzeAndAnswerQuestions(questions: GreenhouseQuestion[], profile: Profile): Promise<Map<string, string>> {
+  async analyzeAndAnswerQuestions(questions: DomainQuestion[], profile: Profile): Promise<Map<string, string>> {
     const answers = new Map<string, string>()
     
     const overrideResponses = this.consumeAnswerOverrides()
@@ -116,7 +116,7 @@ export class GreenhouseQuestionHandler {
     return text.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '')
   }
   
-  private async getAIAnswers(questions: GreenhouseQuestion[], profile: Profile): Promise<AIQuestionResponse[]> {
+  private async getAIAnswers(questions: DomainQuestion[], profile: Profile): Promise<AIQuestionResponse[]> {
     const prompt = this.buildPrompt(questions, profile)
     
     const apiKey = this.getApiKey()
@@ -195,7 +195,7 @@ export class GreenhouseQuestionHandler {
     }
   }
   
-  private buildPrompt(questions: GreenhouseQuestion[], profile: Profile): string {
+  private buildPrompt(questions: DomainQuestion[], profile: Profile): string {
     const questionList = questions.map((q, idx) => {
       let questionText = `${idx + 1}. ${q.label}`
       if (q.required) {
@@ -296,4 +296,4 @@ Return ONLY valid JSON array:
   }
 }
 
-export const greenhouseQuestionHandler = new GreenhouseQuestionHandler()
+export const domainQuestionHandler = new DomainQuestionHandler()

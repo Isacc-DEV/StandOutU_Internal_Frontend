@@ -3,9 +3,9 @@
 // ============================================================================
 
 import { FormField, FillResult, FieldType } from './types'
-import { Profile } from "../profile";
-import { GREENHOUSE_FIELD_MATCHERS } from './greenhouseFieldMatchers'
-import { GreenhouseAiQuestionPayload, GreenhouseQuestion, greenhouseQuestionHandler } from './greenhouseQuestionHandler'
+import { Profile } from "./profile";
+import { DOMAIN_FIELD_MATCHERS } from './domainFieldMatchers'
+import { DomainAiQuestionPayload, DomainQuestion, domainQuestionHandler } from './domainQuestionHandler'
 import { findCustomFieldDefinition, getCustomFieldValue } from './customFieldDefinitions'
 import { fieldFiller } from './fieldFiller'
 import { findCountryOptionIndex } from './phoneUtils'
@@ -13,7 +13,7 @@ import { findCountryOptionIndex } from './phoneUtils'
 const log = (_message: string, _data?: Record<string, unknown>) => {}
 
 export class CustomQuestionsHandler {
-  async collectAIQuestions(fields: FormField[], profile: Profile): Promise<GreenhouseAiQuestionPayload[]> {
+  async collectAIQuestions(fields: FormField[], profile: Profile): Promise<DomainAiQuestionPayload[]> {
     if (fields.length === 0) {
       return []
     }
@@ -56,7 +56,7 @@ export class CustomQuestionsHandler {
     let unmatchedCount = 0
     
     for (const field of fieldsWithKeys) {
-      const matcher = GREENHOUSE_FIELD_MATCHERS[field.key!]
+      const matcher = DOMAIN_FIELD_MATCHERS[field.key!]
       const value = matcher?.getValue(profile)
       
       if (value) {
@@ -145,7 +145,7 @@ export class CustomQuestionsHandler {
     
     if (fieldsNeedingAI.length > 0) {
       log('sending questions to AI', { count: fieldsNeedingAI.length })
-      const aiQuestions: GreenhouseQuestion[] = fieldsNeedingAI.map((field, index) => ({
+      const aiQuestions: DomainQuestion[] = fieldsNeedingAI.map((field, index) => ({
         id: this.buildQuestionId(field, index),
         type: this.mapFieldTypeToQuestionType(field.type),
         label: field.label,
@@ -163,7 +163,7 @@ export class CustomQuestionsHandler {
         }))
       })
       
-      const answers = await greenhouseQuestionHandler.analyzeAndAnswerQuestions(aiQuestions, profile)
+      const answers = await domainQuestionHandler.analyzeAndAnswerQuestions(aiQuestions, profile)
       log('AI answers received', { count: answers.size })
       
       for (const field of fieldsNeedingAI) {
@@ -204,7 +204,7 @@ export class CustomQuestionsHandler {
     }
   }
   
-  private mapFieldTypeToQuestionType(fieldType: FieldType): GreenhouseQuestion['type'] {
+  private mapFieldTypeToQuestionType(fieldType: FieldType): DomainQuestion['type'] {
     switch (fieldType) {
       case 'textarea':
         return 'textarea'
@@ -235,7 +235,7 @@ export class CustomQuestionsHandler {
       if (field.type === 'select' || field.type === 'react-select' || field.type === 'react-multi-select' || field.type === 'checkbox') {
         // If has key, try to validate the value exists in options
         if (field.key) {
-          const matcher = GREENHOUSE_FIELD_MATCHERS[field.key]
+          const matcher = DOMAIN_FIELD_MATCHERS[field.key]
           if (matcher) {
             const value = matcher.getValue(profile)
 

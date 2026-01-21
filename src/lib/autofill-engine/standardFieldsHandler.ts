@@ -3,8 +3,8 @@
 // ============================================================================
 
 import { FormField, FillResult } from './types'
-import { Profile } from "../profile";
-import { GREENHOUSE_FIELD_MATCHERS } from './greenhouseFieldMatchers'
+import { Profile } from "./profile";
+import { DOMAIN_FIELD_MATCHERS } from './domainFieldMatchers'
 import { fieldFiller } from './fieldFiller'
 import { getCountryInfoFromCode } from './phoneUtils'
 
@@ -25,7 +25,7 @@ export class StandardFieldsHandler {
         continue
       }
       
-      const matcher = GREENHOUSE_FIELD_MATCHERS[field.key]
+      const matcher = DOMAIN_FIELD_MATCHERS[field.key]
       if (!matcher) {
         unmatchedCount++
         continue

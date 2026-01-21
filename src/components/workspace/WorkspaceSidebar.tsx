@@ -1,5 +1,5 @@
-import { FileText, RefreshCw, Sparkles } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, Copy, FileText, RefreshCw, Sparkles } from "lucide-react";
+import { useRef, useState } from "react";
 import type { BaseInfo, Profile } from "@/app/workspace/types";
 
 type WorkspaceSidebarProps = {
@@ -19,24 +19,57 @@ type WorkspaceSidebarProps = {
   phoneCombined: string;
 };
 
-function EditableRow({
+function BaseInfoField({
   label,
   value,
-  editing,
-  children,
+  copied,
+  onCopySuccess,
 }: {
   label: string;
-  value: string;
-  editing: boolean;
-  children?: ReactNode;
+  value?: string | number | null;
+  copied: boolean;
+  onCopySuccess: (label: string) => void;
 }) {
+  const normalizedValue = typeof value === "number" ? value.toString() : value ?? "";
+  const trimmedValue = normalizedValue.trim();
+  const displayValue = trimmedValue.length > 0 ? trimmedValue : "---";
+  const canCopy = trimmedValue.length > 0;
+
+  const handleCopy = async () => {
+    if (!canCopy || typeof navigator === "undefined") return;
+    try {
+      await navigator.clipboard.writeText(trimmedValue);
+      onCopySuccess(label);
+    } catch {
+      // Ignore clipboard errors silently.
+    }
+  };
+
   return (
-    <div className="rounded-2xl bg-white/5 px-3 py-2">
-      <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-slate-200">
-        <span>{label}</span>
-      </div>
-      <div className="mt-2 text-sm text-slate-100">
-        {editing ? (children ?? value ?? "N/A") : value ?? "N/A"}
+    <div className="space-y-1.5">
+      <p className="text-[11px] pl-1 font-semibold uppercase tracking-[0.16em] text-slate-500">
+        {label}
+      </p>
+      <div className="relative">
+        <input
+          readOnly
+          value={displayValue}
+          className="w-full bg-[#1D293D] rounded-xl border border-slate-600 px-3 py-2 pr-11 text-sm text-white shadow-sm"
+        />
+        <button
+          type="button"
+          onClick={handleCopy}
+          disabled={!canCopy}
+          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center cursor-pointer justify-center rounded-md  text-slate-500 transition hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={`Copy ${label}`}
+          title={canCopy ? `Copy ${label}` : "Nothing to copy"}
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-emerald-500" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </button>
       </div>
     </div>
   );
@@ -58,6 +91,25 @@ export default function WorkspaceSidebar({
   baseDraft,
   phoneCombined,
 }: WorkspaceSidebarProps) {
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copyTimeoutRef = useRef<number | null>(null);
+  const contact = baseDraft?.contact;
+  const location = baseDraft?.location;
+  const phoneValue =
+    phoneCombined ||
+    contact?.phone ||
+    [contact?.phoneCode, contact?.phoneNumber]
+      .filter((item): item is string => Boolean(item))
+      .join(" ");
+  const handleCopySuccess = (label: string) => {
+    setCopiedField(label);
+    if (copyTimeoutRef.current) {
+      window.clearTimeout(copyTimeoutRef.current);
+    }
+    copyTimeoutRef.current = window.setTimeout(() => {
+      setCopiedField(null);
+    }, 1200);
+  };
   return (
     <section
       className="flex flex-col gap-2 bg-[#0b1224] text-slate-100 xl:fixed xl:left-0 xl:top-[57px] xl:h-[calc(100vh-57px)] xl:w-[280px] xl:overflow-y-auto"
@@ -152,14 +204,16 @@ export default function WorkspaceSidebar({
           </button>
         </div>
 
-        <div className="rounded-xl border border-slate-700 p-4 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="rounded-xl border border-slate-700 shadow-sm">
+          <div 
+            onClick={onToggleBaseInfo}
+          className="pr-2 pl-4 py-2 flex items-center justify-between cursor-pointer">
             <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
               Base info
             </p>
 
             <button
-              onClick={onToggleBaseInfo}
+
               className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
               aria-label={showBaseInfo ? "Collapse" : "Expand"}
             >
@@ -178,37 +232,62 @@ export default function WorkspaceSidebar({
           </div>
 
           {showBaseInfo ? (
-            <div className="rounded-2xl p-4">
-              <div className="space-y-2 text-sm ">
-                <EditableRow label="First name" editing={false} value={baseDraft?.name?.first || "N/A"} />
-                <EditableRow label="Last name" editing={false} value={baseDraft?.name?.last || "N/A"} />
-                <EditableRow label="Email" editing={false} value={baseDraft?.contact?.email || "N/A"} />
-                <EditableRow label="Phone code" editing={false} value={baseDraft?.contact?.phoneCode || "N/A"} />
-                <EditableRow label="Phone number" editing={false} value={baseDraft?.contact?.phoneNumber || "N/A"} />
-                <EditableRow label="Phone (combined)" editing={false} value={phoneCombined || "N/A"} />
-                <EditableRow label="LinkedIn" editing={false} value={baseDraft?.links?.linkedin || "N/A"} />
-
-                <div className="my-3 h-px w-full bg-slate-200/60" />
-
-                <EditableRow label="Address" editing={false} value={baseDraft?.location?.address || "N/A"} />
-                <EditableRow label="City" editing={false} value={baseDraft?.location?.city || "N/A"} />
-                <EditableRow label="State / Province" editing={false} value={baseDraft?.location?.state || "N/A"} />
-                <EditableRow label="Country" editing={false} value={baseDraft?.location?.country || "N/A"} />
-                <EditableRow label="Postal code" editing={false} value={baseDraft?.location?.postalCode || "N/A"} />
-
-                <div className="my-3 h-px w-full bg-slate-200/60" />
-
-                <EditableRow label="Job title" editing={false} value={baseDraft?.career?.jobTitle || "N/A"} />
-                <EditableRow label="Current company" editing={false} value={baseDraft?.career?.currentCompany || "N/A"} />
-                <EditableRow label="Years of experience" editing={false} value={(baseDraft?.career?.yearsExp as string) || "N/A"} />
-                <EditableRow label="Desired salary" editing={false} value={baseDraft?.career?.desiredSalary || "N/A"} />
-
-                <div className="my-3 h-px w-full bg-slate-200/60" />
-
-                <EditableRow label="School" editing={false} value={baseDraft?.education?.school || "N/A"} />
-                <EditableRow label="Degree" editing={false} value={baseDraft?.education?.degree || "N/A"} />
-                <EditableRow label="Major / field" editing={false} value={baseDraft?.education?.majorField || "N/A"} />
-                <EditableRow label="Graduation date" editing={false} value={baseDraft?.education?.graduationAt || "N/A"} />
+            <div className="rounded-2xl px-2 pb-4 shadow-sm">
+              <div className="mt-4 space-y-4">
+                <BaseInfoField
+                  label="First name"
+                  value={baseDraft?.name?.first}
+                  copied={copiedField === "First name"}
+                  onCopySuccess={handleCopySuccess}
+                />
+                <BaseInfoField
+                  label="Last name"
+                  value={baseDraft?.name?.last}
+                  copied={copiedField === "Last name"}
+                  onCopySuccess={handleCopySuccess}
+                />
+                <BaseInfoField
+                  label="Email"
+                  value={contact?.email}
+                  copied={copiedField === "Email"}
+                  onCopySuccess={handleCopySuccess}
+                />
+                <BaseInfoField
+                  label="Phone"
+                  value={phoneValue}
+                  copied={copiedField === "Phone"}
+                  onCopySuccess={handleCopySuccess}
+                />
+                <BaseInfoField
+                  label="Address"
+                  value={location?.address}
+                  copied={copiedField === "Address"}
+                  onCopySuccess={handleCopySuccess}
+                />
+                <BaseInfoField
+                  label="City"
+                  value={location?.city}
+                  copied={copiedField === "City"}
+                  onCopySuccess={handleCopySuccess}
+                />
+                <BaseInfoField
+                  label="Postal code"
+                  value={location?.postalCode}
+                  copied={copiedField === "Postal code"}
+                  onCopySuccess={handleCopySuccess}
+                />
+                <BaseInfoField
+                  label="Country"
+                  value={location?.country}
+                  copied={copiedField === "Country"}
+                  onCopySuccess={handleCopySuccess}
+                />
+                <BaseInfoField
+                  label="LinkedIn"
+                  value={baseDraft?.links?.linkedin}
+                  copied={copiedField === "LinkedIn"}
+                  onCopySuccess={handleCopySuccess}
+                />
               </div>
             </div>
           ) : null}
