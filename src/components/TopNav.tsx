@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, Home, Info, LayoutDashboard, Link2, Users, Calendar, CheckSquare, FileText, UserCheck, Shield, BookOpen } from 'lucide-react';
+import { LogOut, Home, Info, LayoutDashboard, Link2, Users, Calendar, Mail, CheckSquare, FileText, UserCheck, Shield, BookOpen } from 'lucide-react';
 import { clearAuth } from '../lib/auth';
 import { api, API_BASE } from '../lib/api';
 import { getReportsLastSeen, subscribeNotificationRefresh, triggerNotificationRefresh, useNotificationWebSocket } from '../lib/notifications';
@@ -579,6 +579,12 @@ export default function TopNav() {
             active={pathname.startsWith('/community')}
             notificationCount={navNotifications.community}
             icon={Users}
+          />
+          <NavItem
+            href="/mail"
+            label="Mail"
+            active={pathname.startsWith('/mail')}
+            icon={Mail}
           />
           <NavItem
             href="/calendar"
