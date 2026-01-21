@@ -23,7 +23,9 @@ export default function AuthPage() {
 
       console.log("Submitting to", path);
       const body =
-        mode === "signin" ? { email, password } : { email, password, userName: userName.trim() };
+        mode === "signin"
+          ? { identifier: email, password }
+          : { email, password, userName: userName.trim() };
       const res = await api(path, {
         method: "POST",
         body: JSON.stringify(body),
@@ -155,7 +157,7 @@ export default function AuthPage() {
 
           <div className="space-y-2">
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
-              Email Address
+              {mode === "signin" ? "Email or Username" : "Email Address"}
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -164,10 +166,10 @@ export default function AuthPage() {
                 </svg>
               </div>
               <input
-                type="email"
+                type={mode === "signup" ? "email" : "text"}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder={mode === "signin" ? "you@example.com or username" : "you@example.com"}
                 className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900/50 border border-slate-700 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all"
               />
             </div>

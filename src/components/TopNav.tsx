@@ -1,10 +1,11 @@
 'use client';
 
+import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, Home, Info, LayoutDashboard, Link2, Users, Calendar, CheckSquare, FileText, UserCheck, Shield, BookOpen } from 'lucide-react';
+import { LogOut, Home, Info, LayoutDashboard, Link2, Users, Calendar, Mail, CheckSquare, FileText, UserCheck, Shield, BookOpen, ChevronDown } from 'lucide-react';
 import { clearAuth } from '../lib/auth';
 import { api, API_BASE } from '../lib/api';
 import { getReportsLastSeen, subscribeNotificationRefresh, triggerNotificationRefresh, useNotificationWebSocket } from '../lib/notifications';
@@ -328,6 +329,106 @@ function NavItem({
     </Link>
   );
 }
+
+type GroupItem = {
+  href: string;
+  label: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  active?: boolean;
+  onClick?: (e: React.MouseEvent) => void;
+};
+
+function NavGroup({
+  label,
+  menuKey,
+  icon: Icon,
+  items,
+  openMenu,
+  setOpenMenu,
+}: {
+  label: string;
+  menuKey: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  items: GroupItem[];
+  openMenu: string | null;
+  setOpenMenu: React.Dispatch<React.SetStateAction<string | null>>;
+}) {
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isOpen = openMenu === menuKey;
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const handleEnter = () => {
+    clearCloseTimer();
+    setOpenMenu(menuKey);
+  };
+
+  const handleLeave = () => {
+    clearCloseTimer();
+    closeTimerRef.current = setTimeout(() => {
+      setOpenMenu((current) => (current === menuKey ? null : current));
+      closeTimerRef.current = null;
+    }, 150);
+  };
+
+  useEffect(() => {
+    return () => {
+      clearCloseTimer();
+    };
+  }, []);
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      <button
+        type="button"
+        onClick={() => {
+          clearCloseTimer();
+          setOpenMenu(isOpen ? null : menuKey);
+        }}
+        className={`flex items-center gap-1 rounded-full px-3 py-2 text-sm transition ${
+          isOpen ? 'bg-white/10 text-white' : 'text-slate-200 hover:text-white hover:bg-white/5'
+        }`}
+      >
+        {Icon ? <Icon className="h-4 w-4" /> : null}
+        <span>{label}</span>
+        <ChevronDown className={`h-4 w-4 transition ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen ? (
+        <div
+          className="absolute left-0 top-full mt-2 min-w-[180px] rounded-xl border border-white/10 bg-[#020618]/70 backdrop-blur py-2 shadow-xl"
+          onMouseEnter={handleEnter}
+          onMouseLeave={handleLeave}
+        >
+          {items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={`${menuKey}-${item.href}-${item.label}`}
+                href={item.href}
+                onClick={item.onClick}
+                className={`flex items-center gap-2 px-3 py-2 text-sm transition ${
+                  item.active ? 'bg-white/10 text-white' : 'text-slate-200 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                {Icon ? <Icon className="h-4 w-4" /> : null}
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 export default function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
@@ -353,6 +454,7 @@ export default function TopNav() {
   const [inboxOpen, setInboxOpen] = useState(false);
   const [inboxLoading, setInboxLoading] = useState(false);
   const [inboxItems, setInboxItems] = useState<NotificationItem[]>([]);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useNotificationBadges(totalNotifications);
@@ -527,81 +629,91 @@ export default function TopNav() {
           </Link>
         </div>
         <nav className="flex items-center gap-2">
-          <NavItem href="/" label="Home" active={pathname === '/'} notificationCount={navNotifications.home} icon={Home} />
-          {pathname === '/' ? (
-            <a
-              href="#about"
-              onClick={(e) => {
-                e.preventDefault();
-                const aboutSection = document.getElementById('about');
-                if (aboutSection) {
-                  aboutSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-              }}
-              className="relative flex items-center gap-2 rounded-full px-3 py-2 text-sm transition text-slate-200 hover:text-white"
-            >
-              <Info className="h-4 w-4" />
-              About
-            </a>
-          ) : (
-            <Link
-              href="/#about"
-              className="relative flex items-center gap-2 rounded-full px-3 py-2 text-sm transition text-slate-200 hover:text-white"
-            >
-              <Info className="h-4 w-4" />
-              About
-            </Link>
-          )}
-          <NavItem
-            href="/workspace"
-            label="Workspace"
-            active={pathname.startsWith('/workspace')}
-            notificationCount={navNotifications.workspace}
+          <NavGroup
+            label="Home"
+            menuKey="home"
+            icon={Home}
+            openMenu={openMenu}
+            setOpenMenu={setOpenMenu}
+            items={[
+              { href: '/', label: 'Home', icon: Home, active: pathname === '/' },
+              pathname === '/'
+                ? {
+                    href: '#about',
+                    label: 'About',
+                    icon: Info,
+                    active: false,
+                    onClick: (e) => {
+                      e.preventDefault();
+                      const aboutSection = document.getElementById('about');
+                      if (aboutSection) {
+                        aboutSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    },
+                  }
+                : { href: '/#about', label: 'About', icon: Info, active: false },
+            ].filter(Boolean) as GroupItem[]}
+          />
+
+          <NavGroup
+            label="WorkSpace"
+            menuKey="workspace"
             icon={LayoutDashboard}
+            openMenu={openMenu}
+            setOpenMenu={setOpenMenu}
+            items={[
+              { href: '/workspace', label: 'Workspace', icon: LayoutDashboard, active: pathname.startsWith('/workspace') },
+              { href: '/job-links', label: 'Job links', icon: Link2, active: pathname.startsWith('/job-links') },
+              ...(isManager || isBidder || isAdmin
+                ? [
+                    {
+                      href: '/work-book',
+                      label: 'Work book',
+                      icon: BookOpen,
+                      active: pathname.startsWith('/work-book') || pathname.startsWith('/manager/work-book'),
+                    },
+                  ]
+                : []),
+            ]}
           />
-          <NavItem
-            href="/job-links"
-            label="Job links"
-            active={pathname.startsWith('/job-links')}
-            icon={Link2}
+
+          <NavGroup
+            label="Mail"
+            menuKey="mail"
+            icon={Mail}
+            openMenu={openMenu}
+            setOpenMenu={setOpenMenu}
+            items={[
+              { href: '/mail', label: 'Mail', icon: Mail, active: pathname.startsWith('/mail') },
+              { href: '/calendar', label: 'Calendar', icon: Calendar, active: pathname.startsWith('/calendar') },
+            ]}
           />
-          {(isManager || isBidder || isAdmin) && (
-            <NavItem
-              href="/work-book"
-              label="Work book"
-              active={pathname.startsWith('/work-book') || pathname.startsWith('/manager/work-book')}
-              icon={BookOpen}
-            />
-          )}
-          <NavItem
-            href="/community"
-            label="Community"
-            active={pathname.startsWith('/community')}
-            notificationCount={navNotifications.community}
-            icon={Users}
-          />
-          <NavItem
-            href="/calendar"
-            label="Calendar"
-            active={pathname.startsWith('/calendar')}
-            notificationCount={navNotifications.calendar}
-            icon={Calendar}
-          />
-          <NavItem
-            href="/tasks"
-            label="Tasks"
-            active={pathname.startsWith('/tasks')}
-            notificationCount={navNotifications.tasks}
+
+          <NavGroup
+            label="Project"
+            menuKey="project"
             icon={CheckSquare}
+            openMenu={openMenu}
+            setOpenMenu={setOpenMenu}
+            items={[
+              { href: '/tasks', label: 'Tasks', icon: CheckSquare, active: pathname.startsWith('/tasks') },
+              { href: reportsHref, label: 'Reports', icon: FileText, active: reportsActive },
+            ]}
           />
-          <NavItem
-            href={reportsHref}
-            label="Reports"
-            active={reportsActive}
-            notificationCount={navNotifications.reports}
-            icon={FileText}
-          />
-          {isManager && (
+
+          {isAdmin ? (
+            <NavGroup
+              label="Manager"
+              menuKey="manager"
+              icon={UserCheck}
+              openMenu={openMenu}
+              setOpenMenu={setOpenMenu}
+              items={[
+                { href: '/manager/profiles', label: 'Manager', icon: UserCheck, active: pathname.startsWith('/manager') },
+                { href: '/admin/users', label: 'Admin', icon: Shield, active: pathname.startsWith('/admin') },
+              ]}
+            />
+          ) : isManager ? (
             <NavItem
               href="/manager/profiles"
               label="Manager"
@@ -609,16 +721,15 @@ export default function TopNav() {
               notificationCount={navNotifications.manager}
               icon={UserCheck}
             />
-          )}
-          {isAdmin && (
-            <NavItem
-              href="/admin/users"
-              label="Admin"
-              active={pathname.startsWith('/admin')}
-              notificationCount={navNotifications.admin}
-              icon={Shield}
-            />
-          )}
+          ) : null}
+
+          <NavItem
+            href="/community"
+            label="Community"
+            active={pathname.startsWith('/community')}
+            notificationCount={navNotifications.community}
+            icon={Users}
+          />
         </nav>
         <div className="flex items-center gap-3">
           {user ? (
