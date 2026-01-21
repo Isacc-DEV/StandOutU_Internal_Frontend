@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, RefreshCw, Radio } from "lucide-react";
 import type { Ref } from "react";
 import type { WebviewHandle } from "@/app/workspace/types";
+import WorkspaceAutofillOverlay from "./WorkspaceAutofillOverlay";
 
 type WorkspaceBrowserProps = {
   onGoBack: () => void;
@@ -118,6 +119,10 @@ export default function WorkspaceBrowser({
                   webpreferences="allowRunningInsecureContent=yes, webSecurity=no"
                   style={{ height: "100%", minHeight: "calc(100vh - 70px)", width: "100%", backgroundColor: "#ffffff" }}
                 />
+                <WorkspaceAutofillOverlay
+                  visible={loadingAction === "autofill"}
+                  url={browserSrc}
+                />
               </div>
             ) : (
               <>
@@ -128,6 +133,10 @@ export default function WorkspaceBrowser({
                   style={{ backgroundColor: "#ffffff" }}
                   allowFullScreen
                   referrerPolicy="no-referrer"
+                />
+                <WorkspaceAutofillOverlay
+                  visible={loadingAction === "autofill"}
+                  url={browserSrc}
                 />
                 <div className="absolute top-2 right-2 flex gap-2">
                   <a
