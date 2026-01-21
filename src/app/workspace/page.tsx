@@ -67,6 +67,10 @@ export default function Page() {
   const [tailoredResume, setTailoredResume] = useState<BaseResume | null>(null);
   const [llmRawOutput, setLlmRawOutput] = useState("");
   const [llmMeta, setLlmMeta] = useState<{ provider?: string; model?: string } | null>(null);
+  const [tabs, setTabs] = useState<{ id: string; url: string }[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [loadingTabId, setLoadingTabId] = useState<string | null>(null);
+  const [tabType, setTabType] = useState<"links" | "profiles">("links");
   const aiProvider = useSyncExternalStore(
     subscribeToStorage,
     getStoredAiProviderSnapshot,
@@ -76,11 +80,15 @@ export default function Page() {
   const [loadedUrl, setLoadedUrl] = useState<string>("");
   const autoGoUrlRef = useRef<string>("");
   const lastQueryUrlRef = useRef<string>("");
+  const pendingGoTabIdRef = useRef<string | null>(null);
 
   const router = useRouter();
   const isClient = typeof window !== "undefined";
   const showError = useCallback((message: string) => {
     if (!message) return;
+    if (/connecting timed out/i.test(message)) {
+      return;
+    }
     if (typeof window !== "undefined") {
       window.alert(message);
     }
@@ -92,6 +100,9 @@ export default function Page() {
     setNavigationStarted(false);
     setLoadedUrl("");
     setShowBaseInfo(false);
+    setTabs([]);
+    setActiveTabId(null);
+    setLoadingTabId(null);
 
     const profile = profilesList.find((item) => item.id === profileId);
     setBaseInfoView(cleanBaseInfo(profile?.baseInfo ?? {}));
@@ -189,6 +200,16 @@ export default function Page() {
     };
     void loadPhrases();
   }, [user]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    if (tabs.length > 0) return;
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `tab-${Date.now()}`;
+    setTabs([{ id, url: "" }]);
+    setActiveTabId(id);
+  }, [isClient, tabs.length]);
 
   const desktopBridge: DesktopBridge | undefined =
     isClient ? (window as unknown as { smartwork?: DesktopBridge }).smartwork : undefined;
@@ -329,6 +350,20 @@ export default function Page() {
   }, [jobUrlFromQuery]);
 
 
+  const setLoadingActionScoped = useCallback(
+    (value: string) => {
+      setLoadingAction(value);
+      if (value === "go") {
+        const nextTabId = pendingGoTabIdRef.current ?? activeTabId;
+        setLoadingTabId(nextTabId ?? null);
+        pendingGoTabIdRef.current = null;
+      } else if (!value) {
+        setLoadingTabId(null);
+      }
+    },
+    [activeTabId]
+  );
+
   const { handleGo, handleRefresh } = useWorkspaceNavigation({
     api,
     user,
@@ -337,7 +372,7 @@ export default function Page() {
     navigationStarted,
     isElectron,
     webviewRef,
-    setLoadingAction,
+    setLoadingAction: setLoadingActionScoped,
     setCheckEnabled,
     setNavigationStarted,
     setLoadedUrl,
@@ -345,6 +380,153 @@ export default function Page() {
     showError,
     refreshMetrics,
   });
+
+  const normalizeTabUrl = useCallback((rawUrl: string): string | null => {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return null;
+    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    try {
+      return new URL(withScheme).toString();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const tabsForView = useMemo(() => {
+    if (tabType === "profiles") {
+      return profiles.map((profile) => ({
+        id: profile.id,
+        title: profile.displayName,
+      }));
+    }
+    return tabs;
+  }, [profiles, tabType, tabs]);
+
+  const activeTabIdForView = tabType === "profiles"
+    ? (selectedProfileId || null)
+    : activeTabId;
+
+  useEffect(() => {
+    if (!browserSrc) return;
+    const normalized = normalizeTabUrl(browserSrc) ?? browserSrc;
+    setTabs((prev) => {
+      const activeId = activeTabId;
+      if (activeId) {
+        const index = prev.findIndex((tab) => tab.id === activeId);
+        if (index >= 0) {
+          const next = [...prev];
+          next[index] = { ...next[index], url: normalized };
+          return next;
+        }
+      }
+      return [...prev, { id: normalized, url: normalized }];
+    });
+    setActiveTabId((current) => current ?? normalized);
+  }, [activeTabId, browserSrc, normalizeTabUrl]);
+
+  const handleTabSelect = useCallback(
+    (tabId: string) => {
+      if (tabType === "profiles") {
+        if (tabId === selectedProfileId) return;
+        handleSelectProfile(tabId);
+        return;
+      }
+      const nextTab = tabs.find((tab) => tab.id === tabId);
+      if (!nextTab) return;
+      handleUrlChange(nextTab.url);
+      setActiveTabId(nextTab.id);
+      setLoadingTabId(null);
+      if (nextTab.url.trim()) {
+        pendingGoTabIdRef.current = nextTab.id;
+        void handleGo(nextTab.url);
+      }
+    },
+    [handleGo, handleSelectProfile, handleUrlChange, selectedProfileId, tabType, tabs]
+  );
+
+  const handleAddTab = useCallback(() => {
+    if (tabType !== "links") return;
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `tab-${Date.now()}`;
+    setTabs((prev) => [...prev, { id, url: "" }]);
+    setActiveTabId(id);
+    setLoadingTabId(null);
+    handleUrlChange("");
+  }, [handleUrlChange, tabType]);
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      if (tabType !== "links") return;
+      setTabs((prev) => {
+        const nextTabs = prev.filter((tab) => tab.id !== tabId);
+        if (nextTabs.length === 0) {
+          const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `tab-${Date.now()}`;
+          setActiveTabId(id);
+          setLoadingTabId(null);
+          handleUrlChange("");
+          return [{ id, url: "" }];
+        }
+        if (activeTabId === tabId) {
+          const currentIndex = prev.findIndex((tab) => tab.id === tabId);
+          const nextTab =
+            nextTabs[currentIndex] || nextTabs[currentIndex - 1] || nextTabs[0];
+          setActiveTabId(nextTab.id);
+          setLoadingTabId(null);
+          handleUrlChange(nextTab.url);
+          if (nextTab.url.trim()) {
+            pendingGoTabIdRef.current = nextTab.id;
+            void handleGo(nextTab.url);
+          }
+        }
+        return nextTabs;
+      });
+    },
+    [activeTabId, handleGo, handleUrlChange, tabType]
+  );
+
+  const handleDuplicateTab = useCallback(
+    (tabId: string) => {
+      if (tabType !== "links") return;
+      const sourceTab = tabs.find((tab) => tab.id === tabId);
+      if (!sourceTab) return;
+      const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `tab-${Date.now()}`;
+      setTabs((prev) => {
+        const index = prev.findIndex((tab) => tab.id === tabId);
+        if (index < 0) {
+          return [...prev, { id, url: sourceTab.url }];
+        }
+        const next = [...prev];
+        next.splice(index + 1, 0, { id, url: sourceTab.url });
+        return next;
+      });
+      setActiveTabId(id);
+      setLoadingTabId(null);
+      handleUrlChange(sourceTab.url);
+      if (sourceTab.url.trim()) {
+        pendingGoTabIdRef.current = id;
+        void handleGo(sourceTab.url);
+      }
+    },
+    [handleGo, handleUrlChange, tabType, tabs]
+  );
+
+  const handleTabTypeChange = useCallback(
+    (value: "links" | "profiles") => {
+      setTabType(value);
+      setLoadingTabId(null);
+      if (value === "links") {
+        setActiveTabId((current) => current ?? tabs[0]?.id ?? null);
+      } else if (!selectedProfileId && profiles.length > 0) {
+        handleSelectProfile(profiles[0].id);
+      }
+    },
+    [handleSelectProfile, profiles, selectedProfileId, tabs]
+  );
 
   useEffect(() => {
     if (!jobUrlFromQuery) return;
@@ -375,7 +557,7 @@ export default function Page() {
     applicationPhrasesLength: applicationPhrases.length,
     normalizedCheckPhrases,
     collectWebviewText,
-    setLoadingAction,
+    setLoadingAction: setLoadingActionScoped,
     setCheckEnabled,
     setSession,
     showError,
@@ -392,7 +574,7 @@ export default function Page() {
     webviewStatus,
     collectWebviewFields,
     applyAutofillActions,
-    setLoadingAction,
+    setLoadingAction: setLoadingActionScoped,
     setSession,
     showError,
   });
@@ -511,6 +693,15 @@ export default function Page() {
                 canCheck={canCheck}
                 loadingAction={loadingAction}
                 selectedProfileId={selectedProfileId}
+                tabs={tabsForView}
+                activeTabId={activeTabIdForView}
+                onSelectTab={handleTabSelect}
+                onAddTab={handleAddTab}
+                onCloseTab={handleCloseTab}
+                onDuplicateTab={handleDuplicateTab}
+                tabType={tabType}
+                onTabTypeChange={handleTabTypeChange}
+                isNavigating={loadingAction === "go" && loadingTabId === activeTabId}
                 url={effectiveUrl}
                 onUrlChange={handleUrlChange}
                 navigationStarted={navigationStarted}

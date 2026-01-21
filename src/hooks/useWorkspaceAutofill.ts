@@ -132,8 +132,8 @@ export function useWorkspaceAutofill({
                 true
               )) as DomainAiQuestionPayload[] | undefined;
               if (Array.isArray(aiQuestions) && aiQuestions.length > 0) {
-                debug("requesting greenhouse AI answers", { count: aiQuestions.length });
-                const aiResponse = (await api("/autofill/greenhouse-ai", {
+                debug("requesting autofill AI answers", { count: aiQuestions.length });
+                const aiResponse = (await api("/autofill/ai", {
                   method: "POST",
                   body: JSON.stringify({
                     questions: aiQuestions,
@@ -142,11 +142,11 @@ export function useWorkspaceAutofill({
                 })) as DomainAiResponse;
                 if (Array.isArray(aiResponse?.answers)) {
                   aiAnswerOverrides = aiResponse.answers;
-                  debug("received greenhouse AI answers", { count: aiAnswerOverrides.length });
+                  debug("received autofill AI answers", { count: aiAnswerOverrides.length });
                 }
               }
             } catch (err) {
-              debug("greenhouse AI answers failed", {
+              debug("autofill AI answers failed", {
                 message: err instanceof Error ? err.message : "unknown",
               });
             }
