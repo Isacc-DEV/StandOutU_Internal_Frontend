@@ -44,7 +44,8 @@ export default function MailPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [cursor, setCursor] = useState<string | null>(null);
-  const [folder, setFolder] = useState<'inbox' | 'sent' | 'all'>('inbox');
+  // Inbox-only view
+  const folder = 'inbox';
   const [locallyReadIds, setLocallyReadIds] = useState<string[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composeFrom, setComposeFrom] = useState<string | null>(null);
@@ -54,6 +55,9 @@ export default function MailPage() {
   const [sending, setSending] = useState(false);
 
   const localReadSet = useMemo(() => new Set(locallyReadIds), [locallyReadIds]);
+  const unreadCount = useMemo(() => messages.filter((m) => !m.isRead).length, [messages]);
+  const totalCount = messages.length;
+  const mailboxCount = mailboxes.length || 0;
 
   useEffect(() => {
     if (loading) return;
@@ -73,7 +77,7 @@ export default function MailPage() {
         if (selectedMailbox !== 'all') {
           params.set('mailboxes', selectedMailbox);
         }
-        params.set('folder', folder);
+        params.set('folder', 'inbox');
         if (search.trim()) {
           params.set('search', search.trim());
         }
@@ -101,12 +105,12 @@ export default function MailPage() {
         setLoadingList(false);
       }
     },
-    [token, selectedMailbox, search, cursor, selectedMessageId, folder, localReadSet],
+    [token, selectedMailbox, search, cursor, selectedMessageId, localReadSet],
   );
 
   useEffect(() => {
     void loadMessages({ reset: true });
-  }, [selectedMailbox, search, folder, loadMessages]);
+  }, [selectedMailbox, search, loadMessages]);
 
   const handleRefresh = async () => {
     if (!token) return;
@@ -155,8 +159,6 @@ export default function MailPage() {
       setComposeTo('');
       setComposeSubject('');
       setComposeBody('');
-      // Refresh sent mailbox
-      setFolder('sent');
       setCursor(null);
       await loadMessages({ reset: true });
     } catch (err) {
@@ -193,10 +195,10 @@ export default function MailPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-white text-slate-900">
+    <main className="min-h-screen overflow-x-hidden bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-white text-slate-900">
       <TopNav />
       <div className="mx-auto w-full min-h-screen pt-[57px]">
-        <div className="grid gap-4 min-h-[calc(100vh-57px)] xl:grid-cols-[280px_1fr]">
+        <div className="grid w-full gap-4 pb-10 min-h-[calc(100vh-57px)] xl:grid-cols-[280px_1fr]">
           <aside
             className="flex flex-col h-[calc(100vh-57px)] bg-[#0b1224] text-slate-100"
             style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
@@ -273,25 +275,6 @@ export default function MailPage() {
                   })}
                 </div>
 
-                <div className="mt-3 flex gap-2 rounded-xl border border-slate-700 bg-slate-800/60 p-1 text-xs font-semibold text-slate-100">
-                  {(['inbox', 'sent', 'all'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => {
-                        setFolder(tab);
-                        setCursor(null);
-                        setMessages([]);
-                      }}
-                      className={`flex-1 rounded-lg px-3 py-1.5 transition ${
-                        folder === tab ? 'bg-slate-700 text-white' : 'text-slate-300 hover:bg-slate-700/60'
-                      }`}
-                    >
-                      {tab === 'inbox' ? 'Inbox' : tab === 'sent' ? 'Sent' : 'All'}
-                    </button>
-                  ))}
-                </div>
-
                 <div className="space-y-2">
                   <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Search</p>
                   <input
@@ -314,41 +297,48 @@ export default function MailPage() {
             </div>
           </aside>
 
-          <section className="flex-1 px-4 py-6">
-            <div className="mx-auto flex w-full max-w-1xl flex-col gap-6">
-              <header className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
-                    Mail
-                  </p>
-                  <h1 className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
-                    {mailboxLabel(selectedMailbox)}
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Messages are synced from connected accounts. Click refresh to force an update or compose a new email.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCursor(null);
-                      void loadMessages({ reset: true });
-                    }}
-                    disabled={loadingList}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${loadingList ? 'animate-spin' : ''}`} />
-                    <span>Reload</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setComposerOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-full bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_-18px_rgba(99,102,241,0.8)] transition hover:brightness-110"
-                  >
-                    <Send className="h-4 w-4" />
-                    <span>New email</span>
-                  </button>
+          <section className="flex-1 py-6 min-w-0">
+            <div className="mx-auto flex w-full max-w-none flex-col gap-6">
+              <header className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl bg-white px-4 py-4 shadow-[0_16px_45px_-28px_rgba(15,23,42,0.45)] sm:px-6">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-[0_14px_36px_-18px_rgba(99,102,241,0.9)]">
+                      <Mail className="h-6 w-6" />
+                    </div>
+                    <div className="leading-tight">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-indigo-600">
+                        Mail Center
+                      </p>
+                      <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+                        {mailboxLabel(selectedMailbox)}
+                      </h1>
+                      <p className="mt-1 text-sm text-slate-600">
+                        View and reply to messages from your connected accounts. Sync often to keep things fresh.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCursor(null);
+                        void loadMessages({ reset: true });
+                      }}
+                      disabled={loadingList}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${loadingList ? 'animate-spin' : ''}`} />
+                      <span>Reload</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setComposerOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-full bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_30px_-18px_rgba(99,102,241,0.8)] transition hover:brightness-110"
+                    >
+                      <Send className="h-4 w-4" />
+                      <span>New email</span>
+                    </button>
+                  </div>
                 </div>
               </header>
 
@@ -358,15 +348,15 @@ export default function MailPage() {
                 </div>
               ) : null}
 
-              <div className="grid gap-4 lg:grid-cols-[380px_1fr]">
-                <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+                <div className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                     <h3 className="text-sm font-semibold text-slate-800">Messages</h3>
                     {loadingList ? (
                       <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
                     ) : null}
                   </div>
-                  <div className="max-h-[70vh] overflow-auto divide-y divide-slate-100">
+                  <div className="max-h-[70vh] min-h-[420px] overflow-auto divide-y divide-slate-100">
                     {messages.length === 0 && !loadingList ? (
                       <div className="px-4 py-6 text-sm text-slate-500">No messages yet.</div>
                     ) : (
@@ -423,13 +413,13 @@ export default function MailPage() {
                   ) : null}
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm overflow-hidden">
                   {!selectedMessage ? (
                     <div className="h-full min-h-[320px] rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
                       Select a message to view details.
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-4 overflow-auto pr-1 lg:max-h-[75vh]">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
@@ -454,7 +444,7 @@ export default function MailPage() {
                           Reply
                         </button>
                       </div>
-                      <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 text-sm text-slate-800 whitespace-pre-wrap">
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 text-sm text-slate-800 whitespace-pre-wrap break-words break-all overflow-x-auto">
                         {selectedMessage.bodyContent
                           ? toPlainText(selectedMessage.bodyContent, selectedMessage.bodyContentType)
                           : selectedMessage.snippet || 'No content available.'}
