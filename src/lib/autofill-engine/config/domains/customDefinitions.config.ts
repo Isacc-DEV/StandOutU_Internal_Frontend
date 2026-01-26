@@ -86,4 +86,25 @@ export const GREENHOUSE_CUSTOM_FIELD_DEFINITIONS: CustomFieldDefinition[] = [
     type: "react-select",
     value: "LinkedIn",
   },
+
+  // Phone device type (Workday)
+  {
+    patterns: [/phone device type/i, /phone.*type/i],
+    type: "select",
+    value: "Mobile",
+  },
+
+  // Prefix (Workday)
+  {
+    patterns: [/^prefix$/i, /name.*prefix/i],
+    type: "select",
+    index: 2,
+  },
+
+  // Suffix (Workday)
+  {
+    patterns: [/^suffix$/i, /name.*suffix/i],
+    type: "select",
+    index: 0,
+  },
 ];

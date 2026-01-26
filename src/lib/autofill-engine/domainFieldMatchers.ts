@@ -74,6 +74,18 @@ export function matchDomainField(element: HTMLElement, engineMode: EngineMode): 
   console.log('labelText', labelText)
   const textToMatch = `${id} ${name} ${label} ${placeholder} ${labelText} ${ariaDescription} ${ariaLabelText}`.toLowerCase()
   const matchers = getDomainFieldMatchers(engineMode)
+
+  if (engineMode === 'workday') {
+    if (/^(street name|street address|address line 1|address line1)$/i.test(normalizedLabelText)) {
+      return { key: 'streetName', label: labelText }
+    }
+    if (/^city$/i.test(normalizedLabelText)) {
+      return { key: 'city', label: labelText }
+    }
+    if (/^(postal code|zip|zip code|postcode)$/i.test(normalizedLabelText)) {
+      return { key: 'postalCode', label: labelText }
+    }
+  }
   
   // Special check for phone country code selector
   const isPhoneCountry = element.closest('.phone-input__country') !== null || 

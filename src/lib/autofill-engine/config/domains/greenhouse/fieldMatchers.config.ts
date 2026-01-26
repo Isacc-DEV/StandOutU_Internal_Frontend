@@ -13,8 +13,14 @@ export const GREENHOUSE_FIELD_MATCHERS: Record<string, GreenhouseFieldMatcher> =
     getValue: (profile) => profile.personalInfo.firstName,
   },
 
+  familyName: {
+    patterns: [/family[_\s-]?name/i],
+    selector: 'input[id*="family_name"], input[name*="family_name"]',
+    getValue: (profile) => profile.personalInfo.familyName || profile.personalInfo.lastName,
+  },
+
   lastName: {
-    patterns: [/last[_\s-]?name/i, /family[_\s-]?name/i, /surname/i, /lname/i],
+    patterns: [/last[_\s-]?name/i, /surname/i, /lname/i],
     selector: 'input[id*="last_name"], input[name*="last_name"]',
     getValue: (profile) => profile.personalInfo.lastName,
   },
@@ -49,6 +55,12 @@ export const GREENHOUSE_FIELD_MATCHERS: Record<string, GreenhouseFieldMatcher> =
     patterns: [/e?mail/i, /email[_\s-]?address/i],
     selector: 'input[id="email"], input[name="email"], input[type="email"]',
     getValue: (profile) => profile.personalInfo.email,
+  },
+
+  phoneExtension: {
+    patterns: [/phone.*extension/i, /\bextension\b/i, /\bext\.?\b/i],
+    selector: 'input[id*="extension"], input[name*="extension"]',
+    getValue: () => undefined,
   },
 
   phone: {
@@ -109,9 +121,15 @@ export const GREENHOUSE_FIELD_MATCHERS: Record<string, GreenhouseFieldMatcher> =
   },
 
   address: {
-    patterns: [/address/i, /street/i, /addr/i],
+    patterns: [/address/i, /addr/i],
     selector: 'input[id*="address"], input[name*="address"]',
     getValue: (profile) => profile.personalInfo.address,
+  },
+
+  streetName: {
+    patterns: [/street[_\s-]?name/i, /street[_\s-]?address/i, /\bstreet\b/i],
+    selector: 'input[id*="street"], input[name*="street"]',
+    getValue: (profile) => profile.personalInfo.streetName || profile.personalInfo.address,
   },
 
   city: {

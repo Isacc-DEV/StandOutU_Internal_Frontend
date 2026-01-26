@@ -27,7 +27,9 @@ export type PersonalInfo = {
   firstName: string;
   middleName: string;
   lastName: string;
+  familyName: string;
   address: string;
+  streetName: string;
   city: string;
   state: string;
   postalCode: string;

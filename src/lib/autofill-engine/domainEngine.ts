@@ -17,6 +17,10 @@ import { logWithData } from './utils/funcs'
 
 export class DomainEngine {
   private profile: Profile | null = null
+  private cachedFields: FormField[] | null = null
+  private cachedEngineMode: EngineMode | null = null
+  private cachedAt = 0
+  private readonly cacheTtlMs = 5000
   
   setProfile(profile: Profile) {
     this.profile = profile
@@ -44,6 +48,7 @@ export class DomainEngine {
     DomainInputSimulator.setEngineMode(engineMode)
 
     const allFields = await fieldCollector.collectAllFormFields()
+    this.cacheFieldCollection(allFields, engineMode)
     const categorizedFields = fieldCategorizer.categorizeFields(allFields)
     const unmatchedStandardFields = await this.getUnmatchedStandardFields(
       categorizedFields.standard,
@@ -94,13 +99,10 @@ export class DomainEngine {
     await fieldCollector.setEngineMode(engineMode)
     
     DomainInputSimulator.setEngineMode(engineMode)
-    const allFields = await fieldCollector.collectAllFormFields()
+    const cachedFields = this.consumeFieldCollection(engineMode)
+    const allFields = cachedFields ?? await fieldCollector.collectAllFormFields()
     logWithData('field collection complete', { totalFields: allFields.length })
     const categorizedFields = fieldCategorizer.categorizeFields(allFields)
-    logWithData('field categorization complete', {
-      categorizedFields
-    })
-    
     // Fill standard fields and track unmatched ones
     const standardResult = await standardFieldsHandler.fillStandardFields(
       categorizedFields.standard,
@@ -193,6 +195,31 @@ export class DomainEngine {
     }
     
     return unmatched
+  }
+
+  private cacheFieldCollection(fields: FormField[], engineMode: EngineMode) {
+    this.cachedFields = fields
+    this.cachedEngineMode = engineMode
+    this.cachedAt = Date.now()
+  }
+
+  private consumeFieldCollection(engineMode: EngineMode): FormField[] | null {
+    if (!this.cachedFields || !this.cachedEngineMode) {
+      return null
+    }
+    const age = Date.now() - this.cachedAt
+    if (this.cachedEngineMode !== engineMode || age > this.cacheTtlMs) {
+      this.cachedFields = null
+      this.cachedEngineMode = null
+      this.cachedAt = 0
+      return null
+    }
+    const fields = this.cachedFields
+    this.cachedFields = null
+    this.cachedEngineMode = null
+    this.cachedAt = 0
+    logWithData('using cached field collection', { totalFields: fields.length })
+    return fields
   }
   
   private calculateTotals(results: FillResult[]): FillResult {
