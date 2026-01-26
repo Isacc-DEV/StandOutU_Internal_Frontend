@@ -1,5 +1,5 @@
 import type { CustomFieldDefinition } from './config/types'
-import { GREENHOUSE_CUSTOM_FIELD_DEFINITIONS } from './config/domains/greenhouse/customDefinitions.config'
+import { GREENHOUSE_CUSTOM_FIELD_DEFINITIONS } from './config/domains/customDefinitions.config'
 
 /**
  * Custom Field Definitions
@@ -19,9 +19,19 @@ export function findCustomFieldDefinition(label: string, type: string): CustomFi
   const normalizedLabel = label.toLowerCase().trim()
   
   for (const definition of CUSTOM_FIELD_DEFINITIONS) {
-    // Check if type matches (treat react-select same as select)
-    const defType = definition.type === 'react-select' || definition.type === 'react-multi-select' ? 'react-select' : definition.type
-    const fieldType = type === 'react-select' || type === 'react-multi-select' ? 'react-select' : type
+    // Normalize select types (treat select/react-select as the same single-select)
+    const defType =
+      definition.type === 'react-multi-select'
+        ? 'react-multi-select'
+        : definition.type === 'react-select' || definition.type === 'select'
+          ? 'select'
+          : definition.type
+    const fieldType =
+      type === 'react-multi-select'
+        ? 'react-multi-select'
+        : type === 'react-select' || type === 'select'
+          ? 'select'
+          : type
     
     if (defType !== fieldType) {
       continue

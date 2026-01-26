@@ -32,6 +32,7 @@ export function cleanBaseInfo(base: BaseInfo): BaseInfo {
       phone: formatPhone(base?.contact),
       phoneCode: cleanString(base?.contact?.phoneCode),
       phoneNumber: cleanString(base?.contact?.phoneNumber),
+      password: cleanString(base?.contact?.password),
     },
     links,
     location: {

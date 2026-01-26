@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Metrics, Profile, User } from "../app/workspace/types";
 import { cleanBaseInfo } from "@/lib/resume";
+import { loadLastWorkspaceProfileId } from "@/lib/workspace/storage";
 
 type UseWorkspaceProfilesOptions = {
   api: <T = unknown>(path: string, init?: RequestInit) => Promise<T>;
@@ -48,7 +49,11 @@ export function useWorkspaceProfiles({ api, user, onProfileChange }: UseWorkspac
           baseAdditionalBullets: p.baseAdditionalBullets ?? {},
         }));
         setProfiles(normalized);
-        const defaultProfileId = normalized[0]?.id ?? "";
+        const storedProfileId = loadLastWorkspaceProfileId();
+        const defaultProfileId =
+          storedProfileId && normalized.some((profile) => profile.id === storedProfileId)
+            ? storedProfileId
+            : normalized[0]?.id ?? "";
         setSelectedProfileId(defaultProfileId);
         onProfileChange?.(defaultProfileId, normalized);
         void refreshMetrics(user.id);

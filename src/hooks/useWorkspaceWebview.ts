@@ -283,31 +283,10 @@ export function useWorkspaceWebview({
         sourceId?: string;
         line?: number;
       };
-      const msg = (anyEvt.message || "").toString();
-      if (!msg) return;
-      if (msg.includes("[smartwork]")) {
-        if (msg.includes("hotkey")) {
-          const keyMatch = msg.match(/key=([a-z]+)/i);
-          const key = keyMatch?.[1];
-          if (key) {
-            handleHotkey({
-              key,
-              ctrlKey: true,
-              shiftKey: true,
-            });
-          }
-        }
-        return;
+
+      if (anyEvt.sourceId?.includes("autofill/runtime.js")) {
+        console.log('[Webview] =====================>', anyEvt.message)
       }
-      const autofillMarkers = ["[AI Prompt]", "[AI Response]"];
-      if (!autofillMarkers.some((marker) => msg.includes(marker))) {
-        return;
-      }
-      const location =
-        anyEvt.sourceId && anyEvt.line
-          ? ` (${anyEvt.sourceId}:${anyEvt.line})`
-          : "";
-      console.log(`[webview] ${msg}${location}`);
     };
 
     const messageHandler = (evt: MessageEvent) => {

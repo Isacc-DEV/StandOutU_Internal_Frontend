@@ -54,6 +54,7 @@ export function buildAutofillProfile(profile: WorkspaceProfile): AutofillProfile
   const educationInfo = baseInfo.education ?? {};
   const preferences = baseInfo.preferences ?? {};
   const defaultAnswers = baseInfo.defaultAnswers ?? {};
+  const contactPassword = pickText(contact.password);
 
   const resumeProfile = profile.baseResume?.Profile ?? {};
   const resumeContact = resumeProfile.contact ?? {};
@@ -147,6 +148,7 @@ export function buildAutofillProfile(profile: WorkspaceProfile): AutofillProfile
       postalCode: pickText(location.postalCode),
       country: pickText(location.country),
       email: pickText(contact.email, resumeContact.email),
+      password: contactPassword,
       phone: {
         countryCode,
         number,

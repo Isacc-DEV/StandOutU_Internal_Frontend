@@ -1,4 +1,5 @@
 import { Profile } from "./profile";
+import { logWithData } from "./utils/funcs";
 
 export interface DomainQuestion {
   id: string
@@ -27,6 +28,7 @@ export interface AIQuestionResponse {
 export class DomainQuestionHandler {
   private openaiApiKey: string | null = null
   private answerOverrides: AIQuestionResponse[] | null = null
+  private answerDebug: { prompt?: string; rawResponse?: string } | null = null
   
   setApiKey(apiKey: string) {
     this.openaiApiKey = apiKey
@@ -34,6 +36,10 @@ export class DomainQuestionHandler {
 
   setAnswerOverrides(responses: AIQuestionResponse[] | null) {
     this.answerOverrides = responses
+  }
+
+  setAnswerDebug(debug: { prompt?: string; rawResponse?: string } | null) {
+    this.answerDebug = debug
   }
   
   private getApiKey(): string | null {
@@ -44,7 +50,9 @@ export class DomainQuestionHandler {
     return null;
   }
 
-  private log(_message: string, _data?: Record<string, unknown>) {}
+  private log(message: string, data?: Record<string, unknown>) {
+    logWithData(`[AI] ${message}`, data)
+  }
 
   private consumeAnswerOverrides(): AIQuestionResponse[] | null {
     if (!this.answerOverrides) {
@@ -54,13 +62,34 @@ export class DomainQuestionHandler {
     this.answerOverrides = null
     return overrides
   }
+
+  private consumeAnswerDebug(): { prompt?: string; rawResponse?: string } | null {
+    if (!this.answerDebug) {
+      return null
+    }
+    const debug = this.answerDebug
+    this.answerDebug = null
+    return debug
+  }
+
+  private logLargeText(label: string, text?: string) {
+    if (!text) return
+    console.log(`[AI] ${label}\n${text}`)
+  }
   
   async analyzeAndAnswerQuestions(questions: DomainQuestion[], profile: Profile): Promise<Map<string, string>> {
     const answers = new Map<string, string>()
     
     const overrideResponses = this.consumeAnswerOverrides()
+    const debugInfo = this.consumeAnswerDebug()
     const apiKey = this.getApiKey()
     
+    this.log('analyze: start', {
+      questionCount: questions.length,
+      hasOverrides: Boolean(overrideResponses),
+      hasApiKey: Boolean(apiKey)
+    })
+
     if ((!apiKey && !overrideResponses) || questions.length === 0) {
       this.log('skipping: missing api key or no questions', {
         hasKey: Boolean(apiKey),
@@ -70,10 +99,20 @@ export class DomainQuestionHandler {
       return answers
     }
 
+    if (debugInfo?.prompt || debugInfo?.rawResponse) {
+      this.logLargeText('AI prompt', debugInfo.prompt)
+      this.logLargeText('AI response', debugInfo.rawResponse)
+    }
+
     this.log('requesting answers', { questionCount: questions.length })
     
     try {
       const aiResponses = overrideResponses ?? await this.getAIAnswers(questions, profile)
+      if (overrideResponses) {
+        this.log('using answer overrides', { count: aiResponses.length })
+      } else {
+        this.log('using OpenAI response', { count: aiResponses.length })
+      }
       this.log('responses received', { responseCount: aiResponses.length })
       let matchedCount = 0
       

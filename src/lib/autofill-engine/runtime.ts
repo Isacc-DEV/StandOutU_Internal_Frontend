@@ -6,6 +6,12 @@ export type AutofillRuntimeOptions = {
   engineMode?: "auto" | "common" | "greenhouse";
   openaiApiKey?: string;
   aiAnswerOverrides?: AIQuestionResponse[];
+  aiAnswerDebug?: {
+    prompt?: string;
+    rawResponse?: string;
+  };
+  debug?: boolean;
+  debugTag?: string;
 };
 
 export type AutofillRuntimeResult = {
@@ -40,6 +46,7 @@ const normalizeProfile = (profileInput: Profile | null | undefined): Profile => 
       postalCode: personalInfo.postalCode ?? "",
       country: personalInfo.country ?? "",
       email: personalInfo.email ?? "",
+      password: personalInfo.password ?? "",
       phone: {
         countryCode: phone.countryCode ?? "",
         number: phone.number ?? "",
@@ -81,10 +88,53 @@ export async function autofillRuntime(
   const aiAnswerOverrides = Array.isArray(options.aiAnswerOverrides)
     ? options.aiAnswerOverrides
     : null;
+  const aiAnswerDebug =
+    options.aiAnswerDebug && typeof options.aiAnswerDebug === "object"
+      ? {
+          prompt:
+            typeof options.aiAnswerDebug.prompt === "string"
+              ? options.aiAnswerDebug.prompt
+              : undefined,
+          rawResponse:
+            typeof options.aiAnswerDebug.rawResponse === "string"
+              ? options.aiAnswerDebug.rawResponse
+              : undefined,
+        }
+      : null;
+  const debugEnabled = Boolean(options.debug);
+  const debugTag = typeof options.debugTag === "string" && options.debugTag.trim()
+    ? options.debugTag.trim()
+    : "";
+
+  const installDebugConsole = () => {
+    const original = {
+      log: console.log,
+      info: console.info,
+      warn: console.warn,
+      error: console.error,
+    };
+    const wrap =
+      (method: (...args: unknown[]) => void) =>
+        (...args: unknown[]) =>
+          method(debugTag, ...args);
+    console.log = wrap(original.log);
+    console.info = wrap(original.info);
+    console.warn = wrap(original.warn);
+    console.error = wrap(original.error);
+    return () => {
+      console.log = original.log;
+      console.info = original.info;
+      console.warn = original.warn;
+      console.error = original.error;
+    };
+  };
+
+  const restoreConsole = debugEnabled ? installDebugConsole() : null;
 
   autofillEngine.setProfile(profile);
   autofillEngine.setEngineMode(engineMode);
   autofillEngine.setAIAnswerOverrides(aiAnswerOverrides);
+  autofillEngine.setAIAnswerDebug(aiAnswerDebug);
   if (openaiApiKey) {
     autofillEngine.setOpenAIKey(openaiApiKey);
   }
@@ -121,6 +171,9 @@ export async function autofillRuntime(
     return { success: false, error: message };
   } finally {
     window.open = originalOpen;
+    if (restoreConsole) {
+      restoreConsole();
+    }
   }
 }
 
@@ -132,8 +185,41 @@ export async function autofillCollectDomainQuestions(
   const options = optionsInput ?? {};
   const engineMode =
     options.engineMode === "greenhouse" || options.engineMode === "common" ? options.engineMode : "auto";
+  const debugEnabled = Boolean(options.debug);
+  const debugTag = typeof options.debugTag === "string" && options.debugTag.trim()
+    ? options.debugTag.trim()
+    : "";
+  const installDebugConsole = () => {
+    const original = {
+      log: console.log,
+      info: console.info,
+      warn: console.warn,
+      error: console.error,
+    };
+    const wrap =
+      (method: (...args: unknown[]) => void) =>
+        (...args: unknown[]) =>
+          method(debugTag, ...args);
+    console.log = wrap(original.log);
+    console.info = wrap(original.info);
+    console.warn = wrap(original.warn);
+    console.error = wrap(original.error);
+    return () => {
+      console.log = original.log;
+      console.info = original.info;
+      console.warn = original.warn;
+      console.error = original.error;
+    };
+  };
+  const restoreConsole = debugEnabled ? installDebugConsole() : null;
 
   autofillEngine.setProfile(profile);
   autofillEngine.setEngineMode(engineMode);
-  return autofillEngine.collectDomainAIQuestions();
+  try {
+    return await autofillEngine.collectDomainAIQuestions();
+  } finally {
+    if (restoreConsole) {
+      restoreConsole();
+    }
+  }
 }

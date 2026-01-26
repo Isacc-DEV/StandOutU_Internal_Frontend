@@ -134,6 +134,7 @@ export const GREENHOUSE_FIELD_MATCHERS: Record<string, GreenhouseFieldMatcher> =
 
   country: {
     patterns: [
+      /^country$/i,
       /\blocation.*country\b/i,
       /\bcurrent.*country\b/i,
       /\bcountry.*location\b/i,
@@ -229,5 +230,11 @@ export const GREENHOUSE_FIELD_MATCHERS: Record<string, GreenhouseFieldMatcher> =
     patterns: [/end[_\s-]?date/i, /to[_\s-]?date/i, /graduation[_\s-]?date/i, /completion[_\s-]?date/i],
     selector: 'input[id*="end"], input[name*="end_date"], input[id*="graduation"]',
     getValue: (profile) => profile.education[0]?.endDate || profile.workExperience[0]?.endDate,
+  },
+
+  password: {
+    patterns: [/password/i, /\bpasscode\b/i, /\bpassphrase\b/i, /\bpwd\b/i],
+    selector: 'input[type="password"], input[name*="password"], input[id*="password"]',
+    getValue: (profile) => profile.personalInfo.password,
   },
 };

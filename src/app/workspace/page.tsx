@@ -43,99 +43,16 @@ import {
   subscribeToLocation,
   subscribeToStorage,
 } from "@/lib/externalStore";
-
-const URL_TABS_STORAGE_KEY = "UrlTabs";
-const PROFILE_TABS_STORAGE_KEY = "ProfileTabs";
-
-type UrlTabEntry = {
-  url: string;
-  isActive?: boolean;
-};
-
-type ProfileTabStorageEntry = {
-  link: string;
-  cookie?: string | null;
-  sessionStorage?: Record<string, string>;
-  localStorage?: Record<string, string>;
-};
-
-type ProfileTabsEntry = {
-  profileId: string;
-  lastVisitedLink?: string;
-  storage?: ProfileTabStorageEntry[];
-};
-
-const normalizeStoredUrl = (rawUrl: string): string => {
-  try {
-    const trimmed = rawUrl.trim();
-    if (!trimmed) return "";
-    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-    return new URL(withScheme).toString();
-  } catch {
-    return rawUrl.trim();
-  }
-};
-
-const loadUrlTabsFromSession = (): { tabs: UrlTabEntry[]; activeUrl: string | null } | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(URL_TABS_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return null;
-    const tabs = parsed
-      .map((tab) => ({
-        url: typeof tab?.url === "string" ? tab.url : "",
-        isActive: Boolean(tab?.isActive),
-      }))
-      .filter((tab) => Boolean(tab.url));
-    if (!tabs.length) return null;
-    const activeUrl = tabs.find((tab) => tab.isActive)?.url ?? tabs[0].url;
-    return { tabs, activeUrl };
-  } catch (err) {
-    console.warn("Failed to read UrlTabs from session storage", err);
-    return null;
-  }
-};
-
-const saveUrlTabsToSession = (tabs: UrlTabEntry[], activeUrl: string | null) => {
-  if (typeof window === "undefined") return;
-  try {
-    const payload = tabs.map((tab) => ({
-      url: tab.url,
-      isActive: Boolean(activeUrl) && tab.url === activeUrl,
-    }));
-    window.sessionStorage.setItem(URL_TABS_STORAGE_KEY, JSON.stringify(payload));
-  } catch (err) {
-    console.warn("Failed to save UrlTabs to session storage", err);
-  }
-};
-
-const loadProfileTabsFromSession = (): ProfileTabsEntry[] => {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.sessionStorage.getItem(PROFILE_TABS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is ProfileTabsEntry =>
-        Boolean(entry) && typeof entry.profileId === "string"
-    );
-  } catch (err) {
-    console.warn("Failed to read ProfileTabs from session storage", err);
-    return [];
-  }
-};
-
-const saveProfileTabsToSession = (entries: ProfileTabsEntry[]) => {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(PROFILE_TABS_STORAGE_KEY, JSON.stringify(entries));
-  } catch (err) {
-    console.warn("Failed to save ProfileTabs to session storage", err);
-  }
-};
+import {
+  loadProfileTabsFromSession,
+  loadUrlTabsFromSession,
+  normalizeStoredUrl,
+  saveProfileTabsToSession,
+  saveUrlTabsToSession,
+  saveLastWorkspaceProfileId,
+  type ProfileTabStorageEntry,
+  type ProfileTabsEntry,
+} from "@/lib/workspace/storage";
 
 export default function Page() {
   const user = useSyncExternalStore(subscribeToStorage, getStoredUserSnapshot, () => null);
@@ -172,6 +89,7 @@ export default function Page() {
   const [navigationStarted, setNavigationStarted] = useState(false);
   const [loadedUrl, setLoadedUrl] = useState<string>("");
   const autoGoUrlRef = useRef<string>("");
+  const autoReconnectUrlRef = useRef<string>("");
   const lastQueryUrlRef = useRef<string>("");
   const pendingGoTabIdRef = useRef<string | null>(null);
 
@@ -220,43 +138,56 @@ export default function Page() {
     }
   }, []);
 
-  const resetProfileState = useCallback((profileId: string, profilesList: Profile[]) => {
-    setSession(null);
-    setCheckEnabled(false);
-    setNavigationStarted(false);
-    setLoadedUrl("");
-    setShowBaseInfo(false);
-    setTabs([]);
-    setActiveTabId(null);
-    setLoadingTabId(null);
+  const resetProfileState = useCallback(
+    (
+      profileId: string,
+      profilesList: Profile[],
+      options?: { preserveNavigation?: boolean }
+    ) => {
+      const preserveNavigation = Boolean(options?.preserveNavigation);
+      setSession(null);
+      setCheckEnabled(false);
+      setShowBaseInfo(false);
+      if (!preserveNavigation) {
+        setNavigationStarted(false);
+        setLoadedUrl("");
+        setTabs([]);
+        setActiveTabId(null);
+        setLoadingTabId(null);
+      } else {
+        autoReconnectUrlRef.current = "";
+        setLoadingTabId(null);
+      }
 
-    const profile = profilesList.find((item) => item.id === profileId);
-    setBaseInfoView(cleanBaseInfo(profile?.baseInfo ?? {}));
+      const profile = profilesList.find((item) => item.id === profileId);
+      setBaseInfoView(cleanBaseInfo(profile?.baseInfo ?? {}));
 
-    setTailoredResume(null);
-    setTailorError("");
-    setTailorPdfError("");
-    setResumePreviewOpen(false);
-    setJdPreviewOpen(false);
-    setJdDraft("");
-    setJdCaptureError("");
-    setLlmRawOutput("");
-    setLlmMeta(null);
+      setTailoredResume(null);
+      setTailorError("");
+      setTailorPdfError("");
+      setResumePreviewOpen(false);
+      setJdPreviewOpen(false);
+      setJdDraft("");
+      setJdCaptureError("");
+      setLlmRawOutput("");
+      setLlmMeta(null);
 
-    if (!profile) {
-      setBulletCountByCompany({});
-      return;
-    }
-    const normalizedResume = normalizeBaseResume(profile.baseResume);
-    const titleKeys = (normalizedResume.workExperience ?? [])
-      .map((item) => buildPromptCompanyTitleKey(item))
-      .filter(Boolean);
-    setBulletCountByCompany(
-      titleKeys.length
-        ? buildBulletCountDefaults(titleKeys, profile.baseAdditionalBullets)
-        : {}
-    );
-  }, []);
+      if (!profile) {
+        setBulletCountByCompany({});
+        return;
+      }
+      const normalizedResume = normalizeBaseResume(profile.baseResume);
+      const titleKeys = (normalizedResume.workExperience ?? [])
+        .map((item) => buildPromptCompanyTitleKey(item))
+        .filter(Boolean);
+      setBulletCountByCompany(
+        titleKeys.length
+          ? buildBulletCountDefaults(titleKeys, profile.baseAdditionalBullets)
+          : {}
+      );
+    },
+    []
+  );
 
   const handleAiProviderChange = useCallback((value: AiProvider) => {
     if (typeof window === "undefined") return;
@@ -307,9 +238,10 @@ export default function Page() {
       ? session.url
       : "";
   const browserSrc = navigationStarted ? (loadedUrl || sessionUrl || "") : "";
-  const webviewPartition = selectedProfileId
-    ? `persist:smartwork-profile-${selectedProfileId}`
-    : "persist:smartwork-jobview";
+  const webviewPartition =
+    tabType === "profiles" && selectedProfileId
+      ? `persist:smartwork-profile-${selectedProfileId}`
+      : "persist:smartwork-jobview";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -475,10 +407,15 @@ export default function Page() {
   const handleSelectProfile = useCallback(
     (profileId: string) => {
       setSelectedProfileId(profileId);
-      resetProfileState(profileId, profiles);
+      resetProfileState(profileId, profiles, { preserveNavigation: tabType === "links" });
     },
-    [profiles, resetProfileState, setSelectedProfileId]
+    [profiles, resetProfileState, setSelectedProfileId, tabType]
   );
+
+  useEffect(() => {
+    if (!selectedProfileId) return;
+    saveLastWorkspaceProfileId(selectedProfileId);
+  }, [selectedProfileId]);
 
   const handleUrlChange = useCallback(
     (nextUrl: string) => {
@@ -565,6 +502,26 @@ export default function Page() {
     showError,
     refreshMetrics,
   });
+
+  useEffect(() => {
+    if (!user || !selectedProfileId) return;
+    if (tabType !== "links") return;
+    if (session) return;
+    if (loadingAction === "go") return;
+    const trimmed = effectiveUrl.trim();
+    if (!trimmed) return;
+    if (autoReconnectUrlRef.current === trimmed) return;
+    autoReconnectUrlRef.current = trimmed;
+    void handleGo(trimmed);
+  }, [
+    effectiveUrl,
+    handleGo,
+    loadingAction,
+    selectedProfileId,
+    session,
+    tabType,
+    user,
+  ]);
 
   const normalizeTabUrl = useCallback((rawUrl: string): string | null => {
     const trimmed = rawUrl.trim();

@@ -253,6 +253,12 @@ export default function WorkspaceSidebar({
                   onCopySuccess={handleCopySuccess}
                 />
                 <BaseInfoField
+                  label="Password"
+                  value={contact?.password}
+                  copied={copiedField === "Password"}
+                  onCopySuccess={handleCopySuccess}
+                />
+                <BaseInfoField
                   label="Phone"
                   value={phoneValue}
                   copied={copiedField === "Phone"}

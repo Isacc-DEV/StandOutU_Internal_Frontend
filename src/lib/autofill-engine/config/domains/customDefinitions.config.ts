@@ -1,4 +1,4 @@
-import type { CustomFieldDefinition } from "../../types";
+import type { CustomFieldDefinition } from "../types";
 
 export const GREENHOUSE_CUSTOM_FIELD_DEFINITIONS: CustomFieldDefinition[] = [
   // Work Authorization
@@ -58,6 +58,18 @@ export const GREENHOUSE_CUSTOM_FIELD_DEFINITIONS: CustomFieldDefinition[] = [
   // Data retention checkbox consent
   {
     patterns: [/retain.*data/i, /allow.*retain/i, /agree.*retain/i, /keep.*data/i],
+    type: "checkbox",
+    value: "true",
+  },
+
+  // Terms of use acknowledgement (Destination Pet, etc.)
+  {
+    patterns: [
+      /terms of use/i,
+      /acknowledge.*terms/i,
+      /understand.*terms/i,
+      /destination pet/i,
+    ],
     type: "checkbox",
     value: "true",
   },

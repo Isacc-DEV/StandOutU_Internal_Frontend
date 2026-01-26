@@ -8,6 +8,7 @@ export const GREENHOUSE_SELECTORS: DomainAutofillSelectors = {
       'input[type="tel"]',
       'input[type="url"]',
       'input[type="number"]',
+      'input[type="password"]',
       'input[type="checkbox"]',
       'input[type="radio"]',
       "textarea",
@@ -24,6 +25,15 @@ export const GREENHOUSE_SELECTORS: DomainAutofillSelectors = {
     labelElements: ["label", "legend", ".label", "h1", "h2", "h3", "h4", "h5", "h6"],
     requiredIndicators: [".required", ".asterisk", '[aria-label*="required"]'],
     checkboxWrappers: [".checkbox__wrapper"],
+    checkboxGroupContainers: [
+      "fieldset",
+      '[role="group"]',
+      '[data-automation-id*="formField"]',
+      ".form-group",
+      ".field",
+      ".input-wrapper",
+    ],
+    checkboxOptionLabelSelectors: ["label", ".label", "span"],
   },
   reactSelect: {
     container: [".select-shell", ".select__container", ".select"],

@@ -1,7 +1,22 @@
 import { GREENHOUSE_SELECTORS } from "./config/domains/greenhouse/selectors.config"
+import { COMMON_SELECTORS } from "./config/domains/common/selectors.config"
+import { WORKDAY_SELECTORS } from "./config/domains/workday/selectors.config"
+import type { DomainAutofillSelectors } from "./config/types"
+import type { EngineMode } from "./types"
 
 export class DomainInputSimulator {
     private static readonly DEBUG = false
+    private static readonly MENU_WAIT_STEPS = [50, 100, 200, 200, 200]
+    private static selectors: DomainAutofillSelectors = GREENHOUSE_SELECTORS
+
+    static setEngineMode(engineMode: EngineMode): void {
+      this.selectors =
+        engineMode === 'greenhouse'
+          ? GREENHOUSE_SELECTORS
+          : engineMode === 'workday'
+            ? WORKDAY_SELECTORS
+            : COMMON_SELECTORS
+    }
   
     // ========================================================================
     // Logging Utilities
@@ -142,7 +157,7 @@ export class DomainInputSimulator {
     // Public API - Fill React-Select Dropdown
     // ========================================================================
 
-    static async fillReactSelect(input: HTMLInputElement, value: string, isEnableIndexSelection: boolean = false ): Promise<boolean> {
+  static async fillReactSelect(input: HTMLInputElement, value: string, isEnableIndexSelection: boolean = false ): Promise<boolean> {
       if (!input) {
         this.warn('fillReactSelect: Missing input element')
         return false
@@ -151,38 +166,47 @@ export class DomainInputSimulator {
       const isMulti = this.isMultiSelectInput(input)
       this.log('fillReactSelect: Starting', { id: input.id, value, isMulti, isEnableIndexSelection })
 
-      // Find select__control parent component from input
+      const elementsToTry: HTMLElement[] = []
+
+      const pushUnique = (el: HTMLElement | null) => {
+        if (!el) return
+        if (!elementsToTry.includes(el)) {
+          elementsToTry.push(el)
+        }
+      }
+
+      // Prefer custom selectors when available
       const selectControl = this.closestBySelectors(
         input,
-        GREENHOUSE_SELECTORS.reactSelect.control
+        this.selectors.reactSelect.control
       ) as HTMLElement | null
-      
-      // Build elements to try: select__control, then its parent (2 components total)
-      const elementsToTry: HTMLElement[] = []
-      
+      const selectContainer = this.closestBySelectors(
+        input,
+        this.selectors.reactSelect.container
+      ) as HTMLElement | null
+
       if (selectControl) {
-        elementsToTry.push(selectControl)
+        pushUnique(selectControl)
         this.log('fillReactSelect: Found select__control element', {
           className: selectControl.className,
           tagName: selectControl.tagName
         })
-        
-        // Add select__control's parent if it exists
-        if (selectControl.parentElement) {
-          elementsToTry.push(selectControl.parentElement)
-          this.log('fillReactSelect: Added select__control parent', {
-            className: selectControl.parentElement.className || '',
-            tagName: selectControl.parentElement.tagName
-          })
-        }
-      } else {
-        // Fallback: if select__control not found, use input and its parents
-        this.log('fillReactSelect: select__control not found, falling back to input and parents')
-        elementsToTry.push(input)
-        let currentElement: HTMLElement | null = input.parentElement
-        if (currentElement) {
-          elementsToTry.push(currentElement)
-        }
+      }
+
+      if (selectContainer) {
+        pushUnique(selectContainer)
+        this.log('fillReactSelect: Found select container element', {
+          className: selectContainer.className || '',
+          tagName: selectContainer.tagName
+        })
+      }
+
+      // Always try input and up to 3 parent levels as fallback
+      pushUnique(input)
+      let currentElement: HTMLElement | null = input.parentElement
+      for (let i = 0; i < 3 && currentElement; i += 1) {
+        pushUnique(currentElement)
+        currentElement = currentElement.parentElement
       }
 
       if (elementsToTry.length === 0) {
@@ -198,7 +222,7 @@ export class DomainInputSimulator {
         const elementToClick = elementsToTry[i]
         const isSelectControl = this.matchesAnySelector(
           elementToClick,
-          GREENHOUSE_SELECTORS.reactSelect.control
+          this.selectors.reactSelect.control
         )
         
         this.log(`fillReactSelect: Attempting to open dropdown (attempt ${i + 1}/${elementsToTry.length}):`, {
@@ -222,24 +246,18 @@ export class DomainInputSimulator {
           await this.wait(50)
         }
 
-        // Check if dropdown menu appeared with retry logic
-        for (let attempt = 0; attempt < 10; attempt++) {
-          menu = this.findReactSelectMenu(input)
-          if (menu) {
-            this.log(`fillReactSelect: Menu found after clicking attempt ${i + 1}`, { attempt: attempt + 1 })
-            break
-          }
-          await this.wait(100)
-        }
-
-        if (menu) {
+        const result = await this.waitForMenuWithOptions(input)
+        menu = result.menu
+        options = result.options
+        if (menu && options.length > 0) {
+          this.log(`fillReactSelect: Menu found after clicking attempt ${i + 1}`, { attempts: result.attempts })
           break
         }
 
         this.log(`fillReactSelect: Menu did not appear after clicking attempt ${i + 1}`)
       }
 
-      if (!menu) {
+      if (!menu || options.length === 0) {
         const errorMsg = `fillReactSelect: Menu not found after trying to click ${elementsToTry.length} element(s). Input ID: ${input.id || 'none'}, Selector: ${input.className || 'none'}`
         this.warn(errorMsg)
         return false
@@ -253,13 +271,6 @@ export class DomainInputSimulator {
         id: menu.id || '',
         childrenCount: menu.children.length
       })
-
-      // Get all visible options from the dropdown
-      const options = this.getReactSelectOptions(menu)
-      if (options.length === 0) {
-        this.warn('fillReactSelect: No options found in menu')
-        return false
-      }
 
       this.log(`fillReactSelect: Found ${options.length} options`)
 
@@ -291,6 +302,120 @@ export class DomainInputSimulator {
       this.log('fillReactSelect: Complete - Success')
       return true
     }
+
+    static async fillSelectTrigger(
+      trigger: HTMLElement,
+      value: string,
+      isMulti: boolean,
+      isEnableIndexSelection: boolean = false
+    ): Promise<boolean> {
+      if (!trigger) {
+        this.warn('fillSelectTrigger: Missing trigger element')
+        return false
+      }
+
+      const container = this.closestBySelectors(
+        trigger,
+        this.selectors.reactSelect.container
+      ) as HTMLElement | null
+      const input = container?.querySelector<HTMLInputElement>(this.joinSelectors(this.selectors.reactSelect.input)) ?? null
+
+      this.log('fillSelectTrigger: Starting', {
+        id: trigger.getAttribute('id') || '',
+        value,
+        isMulti,
+        hasInput: Boolean(input),
+        isEnableIndexSelection
+      })
+
+      const elementsToTry: HTMLElement[] = []
+      const pushUnique = (el: HTMLElement | null) => {
+        if (!el) return
+        if (!elementsToTry.includes(el)) {
+          elementsToTry.push(el)
+        }
+      }
+
+      const selectControl = this.closestBySelectors(
+        trigger,
+        this.selectors.reactSelect.control
+      ) as HTMLElement | null
+      const selectContainer = container
+
+      pushUnique(selectControl)
+      pushUnique(selectContainer)
+      pushUnique(trigger)
+
+      let currentElement: HTMLElement | null = trigger.parentElement
+      for (let i = 0; i < 3 && currentElement; i += 1) {
+        pushUnique(currentElement)
+        currentElement = currentElement.parentElement
+      }
+
+      if (elementsToTry.length === 0) {
+        this.warn('fillSelectTrigger: No elements to click')
+        return false
+      }
+
+      let menu: Element | null = null
+      let options: HTMLElement[] = []
+
+      for (let i = 0; i < elementsToTry.length; i++) {
+        const elementToClick = elementsToTry[i]
+        this.log(`fillSelectTrigger: Attempting to open dropdown (attempt ${i + 1}/${elementsToTry.length})`, {
+          element: elementToClick.tagName,
+          className: elementToClick.className || ''
+        })
+
+        if (input) {
+          input.focus()
+        }
+
+        elementToClick.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+        elementToClick.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }))
+        elementToClick.click()
+        await this.wait(50)
+
+        if (input && !isMulti && value && !isEnableIndexSelection) {
+          await this.typeIntoReactSelectInput(input, value)
+          await this.wait(50)
+        }
+
+        const result = await this.waitForMenuWithOptions(trigger)
+        menu = result.menu
+        options = result.options
+        if (menu && options.length > 0) {
+          this.log(`fillSelectTrigger: Menu found after clicking attempt ${i + 1}`, { attempts: result.attempts })
+          break
+        }
+      }
+
+      if (!menu || options.length === 0) {
+        this.warn('fillSelectTrigger: Menu not found after all attempts')
+        return false
+      }
+
+      if (!value || value.trim() === '') {
+        this.log('fillSelectTrigger: Value is empty, selecting first option (default)')
+        await this.selectReactSelectOption(options[0])
+        return true
+      }
+
+      const matchedOption = this.findMatchingReactSelectOption(options, value, isEnableIndexSelection)
+      if (!matchedOption) {
+        if (isMulti && options.length > 0) {
+          this.log('fillSelectTrigger: No match found, selecting first option as fallback')
+          await this.selectReactSelectOption(options[0])
+          return true
+        }
+        this.warn('fillSelectTrigger: No matching option found for value:', value)
+        return false
+      }
+
+      await this.selectReactSelectOption(matchedOption)
+      this.log('fillSelectTrigger: Complete - Success')
+      return true
+    }
   
     // ========================================================================
     // React-Select Helper Methods
@@ -318,37 +443,69 @@ export class DomainInputSimulator {
       input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }))
     }
 
-    private static findReactSelectMenu(input: HTMLInputElement): Element | null {
-      const container = this.closestBySelectors(
-        input,
-        GREENHOUSE_SELECTORS.reactSelect.container
-      )
-      if (!container) {
-        this.warn('findReactSelectMenu: Container not found')
-        return null
-      }
-      
-      for (const selector of GREENHOUSE_SELECTORS.reactSelect.menuList) {
-        const menu = container.querySelector(selector)
-        if (menu && this.isVisible(menu)) {
-          this.log('findReactSelectMenu: Menu found', {
-            className: (menu as HTMLElement).className,
-            role: menu.getAttribute('role')
-          })
-          return menu
+    private static async waitForMenuWithOptions(anchor: HTMLElement): Promise<{
+      menu: Element | null
+      options: HTMLElement[]
+      attempts: number
+    }> {
+      let menu: Element | null = null
+      let options: HTMLElement[] = []
+
+      for (let attempt = 0; attempt < this.MENU_WAIT_STEPS.length; attempt++) {
+        await this.wait(this.MENU_WAIT_STEPS[attempt])
+        menu = this.findReactSelectMenu(anchor)
+        if (!menu) {
+          continue
+        }
+        options = this.getReactSelectOptions(menu)
+        if (options.length > 0) {
+          return { menu, options, attempts: attempt + 1 }
         }
       }
-      
-      return null
+
+      return { menu, options, attempts: this.MENU_WAIT_STEPS.length }
+    }
+
+    private static findReactSelectMenu(anchor: HTMLElement): Element | null {
+      const container = this.closestBySelectors(
+        anchor,
+        this.selectors.reactSelect.container
+      )
+      if (container) {
+        for (const selector of this.selectors.reactSelect.menuList) {
+          const menu = container.querySelector(selector)
+          if (menu && this.isVisible(menu) && this.isMenuListCandidate(menu)) {
+            this.log('findReactSelectMenu: Menu found', {
+              className: (menu as HTMLElement).className,
+              role: menu.getAttribute('role')
+            })
+            return menu
+          }
+        }
+      } else {
+        this.warn('findReactSelectMenu: Container not found')
+      }
+
+      return this.findGenericListbox(anchor)
     }
   
     private static getReactSelectOptions(menu: Element): HTMLElement[] {
-      if (GREENHOUSE_SELECTORS.reactSelect.option.length === 0) {
+      if (this.selectors.reactSelect.option.length === 0) {
         return []
       }
-      const optionSelector = this.joinSelectors(GREENHOUSE_SELECTORS.reactSelect.option)
+      const optionSelector = this.joinSelectors(this.selectors.reactSelect.option)
       const options = menu.querySelectorAll(optionSelector)
-      const visibleOptions = Array.from(options).filter(opt => this.isVisible(opt)) as HTMLElement[]
+      const deduped = Array.from(options)
+        .filter((opt) => this.isVisible(opt))
+        .map((opt) => (opt.closest('[data-automation-id="menuItem"]') as HTMLElement | null) ?? opt)
+      const seen = new Set<Element>()
+      const visibleOptions = deduped.filter((opt) => {
+        if (seen.has(opt)) {
+          return false
+        }
+        seen.add(opt)
+        return true
+      }) as HTMLElement[]
       
       this.log(`getReactSelectOptions: Found ${visibleOptions.length} visible options`)
       return visibleOptions
@@ -402,20 +559,59 @@ export class DomainInputSimulator {
   
     private static async selectReactSelectOption(option: HTMLElement): Promise<void> {
       // Scroll into view
-      option.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-      await this.wait(80)
-  
-      // Mouse events
-      option.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, cancelable: true }))
-      option.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }))
-      await this.wait(50)
-  
-      option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
-      await this.wait(50)
-  
-      // Click
-      option.click()
-      await this.wait(200)
+      const clickTarget =
+        option.querySelector('[data-automation-id="promptOption"]') ||
+        option.querySelector('[data-automation-id="promptLeafNode"]') ||
+        option.querySelector('[data-automation-id="radioBtn"]') ||
+        option
+
+      const clickCandidates: HTMLElement[] = []
+      const pushUnique = (el: HTMLElement | null) => {
+        if (!el) return
+        if (!clickCandidates.includes(el)) {
+          clickCandidates.push(el)
+        }
+      }
+
+      if (clickTarget instanceof HTMLElement) {
+        pushUnique(clickTarget)
+        let parent: HTMLElement | null = clickTarget.parentElement
+        for (let i = 0; i < 3 && parent; i += 1) {
+          pushUnique(parent)
+          parent = parent.parentElement
+        }
+      }
+
+      pushUnique(option)
+      let optionParent: HTMLElement | null = option.parentElement
+      for (let i = 0; i < 3 && optionParent; i += 1) {
+        pushUnique(optionParent)
+        optionParent = optionParent.parentElement
+      }
+
+      for (const candidate of clickCandidates) {
+        candidate.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        await this.wait(80)
+
+        candidate.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, cancelable: true }))
+        candidate.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }))
+        await this.wait(50)
+
+        candidate.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+        candidate.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }))
+        candidate.click()
+        await this.wait(200)
+
+        const menuItem = option.closest('[data-automation-id="menuItem"]') as HTMLElement | null
+        const selectedAttr =
+          menuItem?.getAttribute('data-automation-selected') ||
+          menuItem?.getAttribute('aria-selected') ||
+          option.getAttribute('aria-selected') ||
+          option.getAttribute('data-automation-selected')
+        if (selectedAttr === 'true' || !document.body.contains(option)) {
+          break
+        }
+      }
       
       this.log('selectReactSelectOption: Option selected')
     }
@@ -429,7 +625,7 @@ export class DomainInputSimulator {
       return (
         id.includes('[]') ||
         element.getAttribute('aria-multiselectable') === 'true' ||
-        this.closestBySelectors(element, GREENHOUSE_SELECTORS.reactSelect.multiValueContainer) !== null
+        this.closestBySelectors(element, this.selectors.reactSelect.multiValueContainer) !== null
       )
     }
 
@@ -483,6 +679,68 @@ export class DomainInputSimulator {
         style.opacity !== '0' &&
         (element as HTMLElement).offsetParent !== null
       )
+    }
+
+    private static findListboxByAria(element: Element): Element | null {
+      const controls =
+        element.getAttribute('aria-controls') || element.getAttribute('aria-owns') || ''
+      const ids = controls.split(/\s+/).filter(Boolean)
+      if (!ids.length) return null
+      for (const id of ids) {
+        const el = document.getElementById(id)
+        if (el && this.isVisible(el)) {
+          return el
+        }
+      }
+      return null
+    }
+
+    private static findGenericListbox(anchor: HTMLElement): Element | null {
+      const direct = this.findListboxByAria(anchor)
+      if (direct) return direct
+
+      const combo = anchor.closest('[role="combobox"]')
+      if (combo) {
+        const fromCombo = this.findListboxByAria(combo)
+        if (fromCombo) return fromCombo
+      }
+
+      const selector = this.joinSelectors(this.selectors.reactSelect.menuList)
+      const candidates = Array.from(document.querySelectorAll(selector))
+        .filter((el) => this.isVisible(el) && this.isMenuListCandidate(el))
+
+      if (candidates.length === 0) return null
+      if (candidates.length === 1) return candidates[0]
+
+      const inputRect = anchor.getBoundingClientRect()
+      let best: Element | null = null
+      let bestScore = Number.POSITIVE_INFINITY
+      for (const candidate of candidates) {
+        const rect = (candidate as HTMLElement).getBoundingClientRect()
+        const dy = Math.abs(rect.top - inputRect.bottom)
+        const dx = Math.abs(rect.left - inputRect.left)
+        const score = dy * 2 + dx
+        if (score < bestScore) {
+          bestScore = score
+          best = candidate
+        }
+      }
+      return best
+    }
+
+    private static isMenuListCandidate(element: Element): boolean {
+      const automationId = element.getAttribute('data-automation-id') || ''
+      if (automationId === 'selectedItemList') {
+        return false
+      }
+      const ariaLabel = element.getAttribute('aria-label') || ''
+      if (ariaLabel.toLowerCase().includes('items selected')) {
+        return false
+      }
+      if (element.closest('[data-automation-id="selectedItemList"]')) {
+        return false
+      }
+      return true
     }
   
     // ========================================================================
