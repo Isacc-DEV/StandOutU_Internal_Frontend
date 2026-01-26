@@ -974,6 +974,7 @@ export default function Page() {
                 onToggleBaseInfo={() => setShowBaseInfo((v) => !v)}
                 baseDraft={baseDraft}
                 phoneCombined={phoneCombined}
+                baseResume={baseResumeView}
               />
               <WorkspaceBrowser
                 onGoBack={handleGoBack}
