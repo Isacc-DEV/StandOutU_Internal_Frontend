@@ -342,6 +342,7 @@ function NavGroup({
   label,
   menuKey,
   icon: Icon,
+  primaryHref,
   items,
   openMenu,
   setOpenMenu,
@@ -349,12 +350,14 @@ function NavGroup({
   label: string;
   menuKey: string;
   icon?: React.ComponentType<{ className?: string }>;
+  primaryHref?: string;
   items: GroupItem[];
   openMenu: string | null;
   setOpenMenu: React.Dispatch<React.SetStateAction<string | null>>;
 }) {
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isOpen = openMenu === menuKey;
+  const targetHref = primaryHref ?? items[0]?.href ?? '#';
 
   const clearCloseTimer = () => {
     if (closeTimerRef.current) {
@@ -388,11 +391,11 @@ function NavGroup({
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
-      <button
-        type="button"
+      <Link
+        href={targetHref}
         onClick={() => {
           clearCloseTimer();
-          setOpenMenu(isOpen ? null : menuKey);
+          setOpenMenu(null);
         }}
         className={`flex items-center gap-1 rounded-full px-3 py-2 text-sm transition ${
           isOpen ? 'bg-white/10 text-white' : 'text-slate-200 hover:text-white hover:bg-white/5'
@@ -401,7 +404,7 @@ function NavGroup({
         {Icon ? <Icon className="h-4 w-4" /> : null}
         <span>{label}</span>
         <ChevronDown className={`h-4 w-4 transition ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
+      </Link>
       {isOpen ? (
         <div
           className="absolute left-0 top-full mt-2 min-w-[180px] rounded-xl border border-white/10 bg-[#020618]/70 backdrop-blur py-2 shadow-xl"

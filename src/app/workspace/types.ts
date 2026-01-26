@@ -18,10 +18,23 @@ export type User = {
 };
 
 export type BaseInfo = {
-  name?: { first?: string; last?: string };
-  contact?: { email?: string; phone?: string; phoneCode?: string; phoneNumber?: string };
+  name?: { first?: string; last?: string; family?: string };
+  contact?: {
+    email?: string;
+    phone?: string;
+    phoneCode?: string;
+    phoneNumber?: string;
+    password?: string;
+  };
   links?: Record<string, string> & { linkedin?: string };
-  location?: { address?: string; city?: string; state?: string; country?: string; postalCode?: string };
+  location?: {
+    address?: string;
+    streetName?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postalCode?: string;
+  };
   career?: { jobTitle?: string; currentCompany?: string; yearsExp?: string | number; desiredSalary?: string };
   education?: { school?: string; degree?: string; majorField?: string; graduationAt?: string };
   workAuth?: { authorized?: boolean; needsSponsorship?: boolean };

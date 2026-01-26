@@ -1,4 +1,4 @@
-import type { CustomFieldDefinition } from "../../types";
+import type { CustomFieldDefinition } from "../types";
 
 export const GREENHOUSE_CUSTOM_FIELD_DEFINITIONS: CustomFieldDefinition[] = [
   // Work Authorization
@@ -62,6 +62,18 @@ export const GREENHOUSE_CUSTOM_FIELD_DEFINITIONS: CustomFieldDefinition[] = [
     value: "true",
   },
 
+  // Terms of use acknowledgement (Destination Pet, etc.)
+  {
+    patterns: [
+      /terms of use/i,
+      /acknowledge.*terms/i,
+      /understand.*terms/i,
+      /destination pet/i,
+    ],
+    type: "checkbox",
+    value: "true",
+  },
+
   // Source of vacancy
   {
     patterns: [
@@ -73,5 +85,26 @@ export const GREENHOUSE_CUSTOM_FIELD_DEFINITIONS: CustomFieldDefinition[] = [
     ],
     type: "react-select",
     value: "LinkedIn",
+  },
+
+  // Phone device type (Workday)
+  {
+    patterns: [/phone device type/i, /phone.*type/i],
+    type: "select",
+    value: "Mobile",
+  },
+
+  // Prefix (Workday)
+  {
+    patterns: [/^prefix$/i, /name.*prefix/i],
+    type: "select",
+    index: 2,
+  },
+
+  // Suffix (Workday)
+  {
+    patterns: [/^suffix$/i, /name.*suffix/i],
+    type: "select",
+    index: 0,
   },
 ];

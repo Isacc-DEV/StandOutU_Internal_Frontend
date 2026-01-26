@@ -2,8 +2,10 @@
 // Types & Interfaces for Autofill Engine
 // ============================================================================
 
+export type EngineMode = "greenhouse" | "workday" | "common"
+
 export interface FormField {
-  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement
   key: string | null
   label: string
   type: FieldType

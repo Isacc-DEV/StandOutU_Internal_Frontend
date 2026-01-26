@@ -70,6 +70,12 @@ type UseWorkspaceWebviewOptions = {
   setCheckEnabled: (value: boolean) => void;
 };
 
+type WebviewStorageSnapshot = {
+  cookie?: string;
+  sessionStorage?: Record<string, string>;
+  localStorage?: Record<string, string>;
+};
+
 export function useWorkspaceWebview({
   isClient,
   isElectron,
@@ -277,31 +283,10 @@ export function useWorkspaceWebview({
         sourceId?: string;
         line?: number;
       };
-      const msg = (anyEvt.message || "").toString();
-      if (!msg) return;
-      if (msg.includes("[smartwork]")) {
-        if (msg.includes("hotkey")) {
-          const keyMatch = msg.match(/key=([a-z]+)/i);
-          const key = keyMatch?.[1];
-          if (key) {
-            handleHotkey({
-              key,
-              ctrlKey: true,
-              shiftKey: true,
-            });
-          }
-        }
-        return;
+
+      if (anyEvt.sourceId?.includes("autofill/runtime.js")) {
+        console.log('[Webview] =====================>', anyEvt.message)
       }
-      const autofillMarkers = ["[AI Prompt]", "[AI Response]"];
-      if (!autofillMarkers.some((marker) => msg.includes(marker))) {
-        return;
-      }
-      const location =
-        anyEvt.sourceId && anyEvt.line
-          ? ` (${anyEvt.sourceId}:${anyEvt.line})`
-          : "";
-      console.log(`[webview] ${msg}${location}`);
     };
 
     const messageHandler = (evt: MessageEvent) => {
@@ -389,6 +374,91 @@ export function useWorkspaceWebview({
       return null;
     }
   }, []);
+
+  const captureWebviewStorage = useCallback(async (): Promise<WebviewStorageSnapshot | null> => {
+    const view = webviewRef.current;
+    if (!view) return null;
+    const script = `
+      (() => {
+        try {
+          const toObject = (storage) => {
+            const out = {};
+            for (let i = 0; i < storage.length; i += 1) {
+              const key = storage.key(i);
+              if (key != null) {
+                out[key] = storage.getItem(key);
+              }
+            }
+            return out;
+          };
+          return {
+            cookie: typeof document !== "undefined" ? document.cookie : "",
+            sessionStorage: typeof window !== "undefined" ? toObject(window.sessionStorage) : {},
+            localStorage: typeof window !== "undefined" ? toObject(window.localStorage) : {},
+          };
+        } catch (err) {
+          return { error: String(err && err.message ? err.message : err) };
+        }
+      })();
+    `;
+    try {
+      const result = await view.executeJavaScript(script, true);
+      if (!result || typeof result !== "object") return null;
+      if ("error" in (result as { error?: string })) {
+        return null;
+      }
+      return result as WebviewStorageSnapshot;
+    } catch (err) {
+      console.error("Failed to capture webview storage", err);
+      return null;
+    }
+  }, []);
+
+  const restoreWebviewStorage = useCallback(
+    async (snapshot: WebviewStorageSnapshot | null) => {
+      const view = webviewRef.current;
+      if (!view || !snapshot) return;
+      const payload = JSON.stringify(snapshot);
+      const script = `
+        (() => {
+          try {
+            const data = ${payload};
+            const assignStorage = (storage, entries) => {
+              if (!entries || typeof entries !== "object") return;
+              Object.entries(entries).forEach(([key, value]) => {
+                if (typeof value === "string") {
+                  storage.setItem(key, value);
+                }
+              });
+            };
+            if (data.localStorage && typeof window !== "undefined") {
+              assignStorage(window.localStorage, data.localStorage);
+            }
+            if (data.sessionStorage && typeof window !== "undefined") {
+              assignStorage(window.sessionStorage, data.sessionStorage);
+            }
+            if (typeof data.cookie === "string" && data.cookie) {
+              data.cookie.split(";").forEach((cookie) => {
+                const trimmed = cookie.trim();
+                if (trimmed) {
+                  document.cookie = trimmed;
+                }
+              });
+            }
+            return true;
+          } catch (err) {
+            return false;
+          }
+        })();
+      `;
+      try {
+        await view.executeJavaScript(script, true);
+      } catch (err) {
+        console.error("Failed to restore webview storage", err);
+      }
+    },
+    []
+  );
 
   const readWebviewSelection = useCallback(async () => {
     if (!isElectron || !webviewRef.current) return "";
@@ -481,6 +551,8 @@ export function useWorkspaceWebview({
     collectWebviewText,
     collectWebviewFields,
     applyAutofillActions,
+    captureWebviewStorage,
+    restoreWebviewStorage,
     readWebviewSelection,
     handleGoBack,
     handleGoForward,

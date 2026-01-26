@@ -95,10 +95,17 @@ export class FieldFiller {
           return await this.fillTextInput(field.element as HTMLInputElement | HTMLTextAreaElement, value)
         
         case 'select':
-          return await this.fillSelectDropdown(field.element as HTMLSelectElement, value)
-        
         case 'react-select':
-          return await this.fillReactSelect(field.element as HTMLInputElement, value, false, false)
+          if (field.element instanceof HTMLSelectElement) {
+            return await this.fillSelectDropdown(field.element, value)
+          }
+          if (field.element instanceof HTMLInputElement) {
+            return await this.fillReactSelect(field.element, value, false, false)
+          }
+          if (field.element instanceof HTMLButtonElement) {
+            return await DomainInputSimulator.fillSelectTrigger(field.element, value, false, false)
+          }
+          return false
         
         case 'react-multi-select':
           return await this.fillReactSelect(field.element as HTMLInputElement, value, true, false)
@@ -129,10 +136,17 @@ export class FieldFiller {
           return await this.fillTextInput(field.element as HTMLInputElement | HTMLTextAreaElement, value)
         
         case 'select':
-          return await this.fillSelectDropdown(field.element as HTMLSelectElement, value)
-        
         case 'react-select':
-          return await this.fillReactSelect(field.element as HTMLInputElement, value, false, isIndexBased)
+          if (field.element instanceof HTMLSelectElement) {
+            return await this.fillSelectDropdown(field.element, value)
+          }
+          if (field.element instanceof HTMLInputElement) {
+            return await this.fillReactSelect(field.element, value, false, isIndexBased)
+          }
+          if (field.element instanceof HTMLButtonElement) {
+            return await DomainInputSimulator.fillSelectTrigger(field.element, value, false, isIndexBased)
+          }
+          return false
         
         case 'react-multi-select':
           return await this.fillReactSelect(field.element as HTMLInputElement, value, true, isIndexBased)
@@ -301,8 +315,19 @@ export class FieldFiller {
     const radioGroup = document.querySelectorAll<HTMLInputElement>(
       `input[type="radio"][name="${element.name}"]`
     )
+
+    const asArray = Array.from(radioGroup)
+    const indexMatch = value.trim().match(/^(?:#|index:|option-)?(\d+)$/i)
+    if (indexMatch) {
+      const idx = Number(indexMatch[1])
+      if (Number.isFinite(idx) && idx >= 0 && idx < asArray.length) {
+        asArray[idx].click()
+        await this.wait(100)
+        return true
+      }
+    }
     
-    for (const radio of radioGroup) {
+    for (const radio of asArray) {
       const labelElement = document.querySelector(`label[for="${radio.id}"]`)
       const label = labelElement?.textContent?.trim() || ''
       if (label.toLowerCase().includes(value.toLowerCase())) {

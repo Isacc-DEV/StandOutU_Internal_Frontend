@@ -4,21 +4,28 @@
 
 import { FormField, FillResult, FieldType } from './types'
 import { Profile } from "./profile";
-import { DOMAIN_FIELD_MATCHERS } from './domainFieldMatchers'
+import { getDomainFieldMatchers } from './domainFieldMatchers'
 import { DomainAiQuestionPayload, DomainQuestion, domainQuestionHandler } from './domainQuestionHandler'
 import { findCustomFieldDefinition, getCustomFieldValue } from './customFieldDefinitions'
 import { fieldFiller } from './fieldFiller'
 import { findCountryOptionIndex } from './phoneUtils'
+import { logWithData } from './utils/funcs'
 
-const log = (_message: string, _data?: Record<string, unknown>) => {}
+const log = (message: string, data?: Record<string, unknown>) => {
+  logWithData(`[CustomQuestions] ${message}`, data)
+}
 
 export class CustomQuestionsHandler {
-  async collectAIQuestions(fields: FormField[], profile: Profile): Promise<DomainAiQuestionPayload[]> {
+  async collectAIQuestions(
+    fields: FormField[],
+    profile: Profile,
+    engineMode: "greenhouse" | "workday" | "common"
+  ): Promise<DomainAiQuestionPayload[]> {
     if (fields.length === 0) {
       return []
     }
 
-    const { fieldsNeedingAI } = await this.classifyFields(fields, profile)
+    const { fieldsNeedingAI } = await this.classifyFields(fields, profile, engineMode)
     return fieldsNeedingAI.map((field, index) => ({
       id: this.buildQuestionId(field, index),
       type: this.mapFieldTypeToQuestionType(field.type),
@@ -28,7 +35,11 @@ export class CustomQuestionsHandler {
     }))
   }
 
-  async fillCustomQuestions(fields: FormField[], profile: Profile): Promise<FillResult & { aiQuestionsHandled: number }> {
+  async fillCustomQuestions(
+    fields: FormField[],
+    profile: Profile,
+    engineMode: "greenhouse" | "workday" | "common"
+  ): Promise<FillResult & { aiQuestionsHandled: number }> {
     if (fields.length === 0) {
       log('skipping: no custom fields')
       return { filledCount: 0, totalFields: 0, unmatchedCount: 0, aiQuestionsHandled: 0 }
@@ -40,11 +51,16 @@ export class CustomQuestionsHandler {
       fields: fields.map(f => ({
         label: f.label,
         type: f.type,
-        options: f.options || []
+        optionsLength: f.options?.length ?? 0
       }))
     })
     
-    const { fieldsWithKeys, fieldsWithDefinitions, fieldsNeedingAI } = await this.classifyFields(fields, profile)
+    const { fieldsWithKeys, fieldsWithDefinitions, fieldsNeedingAI } = await this.classifyFields(
+      fields,
+      profile,
+      engineMode
+    )
+    const matchers = getDomainFieldMatchers(engineMode)
     
     log('routing summary', {
       withKeys: fieldsWithKeys.length,
@@ -56,7 +72,7 @@ export class CustomQuestionsHandler {
     let unmatchedCount = 0
     
     for (const field of fieldsWithKeys) {
-      const matcher = DOMAIN_FIELD_MATCHERS[field.key!]
+      const matcher = matchers[field.key!]
       const value = matcher?.getValue(profile)
       
       if (value) {
@@ -75,7 +91,7 @@ export class CustomQuestionsHandler {
             
             // For phoneCountry, use country code to find option
             if (field.key === 'phoneCountry' && countryCode) {
-              if (field.type === 'select' && field.element instanceof HTMLSelectElement) {
+              if (field.element instanceof HTMLSelectElement) {
                 matchedIndex = findCountryOptionIndex(field.element.options, countryCode)
               } else if (field.options) {
                 matchedIndex = findCountryOptionIndex(field.options, countryCode)
@@ -83,7 +99,7 @@ export class CustomQuestionsHandler {
             }
             // For country, try to find by country name first, then fallback to matching
             else if (field.key === 'country' && countryName) {
-              if (field.type === 'select' && field.element instanceof HTMLSelectElement) {
+              if (field.element instanceof HTMLSelectElement) {
                 matchedIndex = await this.findSelectOptionIndex(field.element, countryName)
               } else if (field.options) {
                 matchedIndex = this.findReactSelectOptionIndex(field.options, countryName)
@@ -91,9 +107,9 @@ export class CustomQuestionsHandler {
             }
           } else {
             // Normal matching for other select fields
-            if (field.type === 'select' && field.element instanceof HTMLSelectElement) {
+            if (field.element instanceof HTMLSelectElement) {
               matchedIndex = await this.findSelectOptionIndex(field.element, value)
-            } else if ((field.type === 'react-select' || field.type === 'react-multi-select') && field.options) {
+            } else if (field.options) {
               matchedIndex = this.findReactSelectOptionIndex(field.options, value)
             }
           }
@@ -159,7 +175,7 @@ export class CustomQuestionsHandler {
           id: q.id,
           label: q.label,
           type: q.type,
-          options: q.options
+          optionsLength: q.options?.length ?? 0
         }))
       })
       
@@ -172,9 +188,11 @@ export class CustomQuestionsHandler {
         
         if (answer) {
           const isIndexBased = answer.startsWith('#') && (
+            field.type === 'select' || 
             field.type === 'react-select' || 
             field.type === 'react-multi-select' || 
-            field.type === 'checkbox'
+            field.type === 'checkbox' ||
+            field.type === 'radio'
           )
           
           const success = await fieldFiller.fillFieldWithAI(field, answer, isIndexBased)
@@ -216,6 +234,8 @@ export class CustomQuestionsHandler {
         return 'multi_value_single_select'
       case 'checkbox':
         return 'checkbox'
+      case 'radio':
+        return 'select'
       default:
         return 'text'
     }
@@ -225,17 +245,30 @@ export class CustomQuestionsHandler {
     return field.element.id || field.element.name || `question_${index}`
   }
 
-  private async classifyFields(fields: FormField[], profile: Profile) {
+  private async classifyFields(
+    fields: FormField[],
+    profile: Profile,
+    engineMode: "greenhouse" | "workday" | "common"
+  ) {
     const fieldsWithKeys: FormField[] = []
     const fieldsWithDefinitions: FormField[] = []
     const fieldsNeedingAI: FormField[] = []
+    const matchers = getDomainFieldMatchers(engineMode)
+
+    const pushIfDefinition = (field: FormField): boolean => {
+      const definition = findCustomFieldDefinition(field.label, field.type)
+      if (definition) {
+        fieldsWithDefinitions.push(field)
+        return true
+      }
+      return false
+    }
 
     for (const field of fields) {
-      // For select/react-select/checkbox, check if we can fill them with existing keys
-      if (field.type === 'select' || field.type === 'react-select' || field.type === 'react-multi-select' || field.type === 'checkbox') {
-        // If has key, try to validate the value exists in options
+      // Select-like fields with option validation
+      if (field.type === 'select' || field.type === 'react-select' || field.type === 'react-multi-select') {
         if (field.key) {
-          const matcher = DOMAIN_FIELD_MATCHERS[field.key]
+          const matcher = matchers[field.key]
           if (matcher) {
             const value = matcher.getValue(profile)
 
@@ -243,16 +276,17 @@ export class CustomQuestionsHandler {
               let valueExists = false
               let matchedIndex = -1
 
-              // Check if value exists in options
-              if (field.type === 'select' && field.element instanceof HTMLSelectElement) {
+              if (field.element instanceof HTMLSelectElement) {
                 valueExists = await fieldFiller.validateSelectValue(field.element, value)
-                // Find the matching index
                 if (valueExists) {
                   matchedIndex = await this.findSelectOptionIndex(field.element, value)
                 }
-              } else if (field.type === 'react-select' || field.type === 'react-multi-select') {
-                valueExists = await fieldFiller.validateReactSelectValue(field.element as HTMLInputElement, value, field.options)
-                // Find the matching index
+              } else {
+                valueExists = await fieldFiller.validateReactSelectValue(
+                  field.element as HTMLInputElement,
+                  value,
+                  field.options
+                )
                 if (valueExists) {
                   matchedIndex = this.findReactSelectOptionIndex(field.options, value)
                 }
@@ -261,29 +295,43 @@ export class CustomQuestionsHandler {
               if (valueExists && matchedIndex >= 0) {
                 fieldsWithKeys.push(field)
                 continue
-              } else {
-                fieldsNeedingAI.push(field)
-                continue
               }
             }
           }
         }
 
-        // No key or couldn't validate - send to AI
+        if (pushIfDefinition(field)) {
+          continue
+        }
         fieldsNeedingAI.push(field)
         continue
       }
 
-      // For other types, check key and definitions
+      // Checkbox: allow custom definitions when key is missing or value is not available
+      if (field.type === 'checkbox') {
+        if (field.key) {
+          const matcher = matchers[field.key]
+          const value = matcher?.getValue(profile)
+          if (value) {
+            fieldsWithKeys.push(field)
+            continue
+          }
+        }
+
+        if (pushIfDefinition(field)) {
+          continue
+        }
+        fieldsNeedingAI.push(field)
+        continue
+      }
+
+      // Other types: prefer key, then custom definition, else AI
       if (field.key) {
         fieldsWithKeys.push(field)
+      } else if (pushIfDefinition(field)) {
+        continue
       } else {
-        const definition = findCustomFieldDefinition(field.label, field.type)
-        if (definition) {
-          fieldsWithDefinitions.push(field)
-        } else {
-          fieldsNeedingAI.push(field)
-        }
+        fieldsNeedingAI.push(field)
       }
     }
 

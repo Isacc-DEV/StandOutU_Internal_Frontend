@@ -13,6 +13,10 @@ export type FieldCollectorSelectors = {
   labelElements: string[];
   requiredIndicators: string[];
   checkboxWrappers: string[];
+  checkboxGroupContainers?: string[];
+  checkboxOptionLabelSelectors?: string[];
+  radioGroupContainers?: string[];
+  radioOptionLabelSelectors?: string[];
 };
 
 export type DomainAutofillSelectors = {

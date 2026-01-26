@@ -53,6 +53,10 @@ export function useWorkspaceAutofill({
 }: UseWorkspaceAutofillOptions) {
   type DomainAiResponse = {
     answers: AIQuestionResponse[];
+    prompt?: string;
+    rawResponse?: string;
+    provider?: string;
+    model?: string;
   };
   const runtimeSourceRef = useRef<string | null>(null);
   const runtimeSourcePromiseRef = useRef<Promise<string | null> | null>(null);
@@ -62,6 +66,10 @@ export function useWorkspaceAutofill({
     } else {
       console.log("[autofill]", message);
     }
+  };
+  const logLargeText = (label: string, text: string) => {
+    if (!text) return;
+    console.log(`[autofill] ${label}\n${text}`);
   };
 
   const handleAutofill = useCallback(async () => {
@@ -118,12 +126,18 @@ export function useWorkspaceAutofill({
           };
           const runtimeSource = await loadRuntimeSource();
           let aiAnswerOverrides: AIQuestionResponse[] | undefined;
+          let aiAnswerDebug:
+            | {
+                prompt?: string;
+                rawResponse?: string;
+              }
+            | undefined;
 
           if (webviewRef.current) {
             try {
               const collectScript = buildCollectDomainQuestionsScript(
                 autofillProfile,
-                { engineMode: "auto" },
+                { engineMode: "auto", debug: true, debugTag: "" },
                 runtimeUrl,
                 runtimeSource || undefined
               );
@@ -132,18 +146,42 @@ export function useWorkspaceAutofill({
                 true
               )) as DomainAiQuestionPayload[] | undefined;
               if (Array.isArray(aiQuestions) && aiQuestions.length > 0) {
-                debug("requesting autofill AI answers", { count: aiQuestions.length });
+                debug("requesting autofill AI answers", {
+                  count: aiQuestions.length,
+                  questions: aiQuestions.map((question) => ({
+                    id: question.id,
+                    type: question.type,
+                    label: question.label,
+                    required: question.required,
+                    optionsLength: question.options?.length ?? 0,
+                  })),
+                });
                 const aiResponse = (await api("/autofill/ai", {
                   method: "POST",
                   body: JSON.stringify({
                     questions: aiQuestions,
                     profile: autofillProfile,
+                    debug: true,
                   }),
                 })) as DomainAiResponse;
                 if (Array.isArray(aiResponse?.answers)) {
                   aiAnswerOverrides = aiResponse.answers;
                   debug("received autofill AI answers", { count: aiAnswerOverrides.length });
+                  if (aiResponse.prompt || aiResponse.rawResponse) {
+                    aiAnswerDebug = {
+                      prompt: aiResponse.prompt,
+                      rawResponse: aiResponse.rawResponse,
+                    };
+                  }
+                  if (aiResponse.prompt) {
+                    logLargeText("autofill AI prompt", aiResponse.prompt);
+                  }
+                  if (aiResponse.rawResponse) {
+                    logLargeText("autofill AI raw response", aiResponse.rawResponse);
+                  }
                 }
+              } else {
+                debug("autofill AI skipped: no custom questions detected");
               }
             } catch (err) {
               debug("autofill AI answers failed", {
@@ -157,6 +195,9 @@ export function useWorkspaceAutofill({
             {
               engineMode: "auto",
               aiAnswerOverrides,
+              aiAnswerDebug,
+              debug: true,
+              debugTag: "",
             },
             runtimeUrl,
             runtimeSource || undefined
@@ -171,6 +212,7 @@ export function useWorkspaceAutofill({
             engine: autofillResult?.engine,
             redirect: Boolean(autofillResult?.redirectUrl),
             error: autofillResult?.error,
+            aiQuestionsHandled: autofillResult?.aiQuestionsHandled,
           });
           if (autofillResult?.redirectUrl) {
             debug("redirecting to greenhouse form", {

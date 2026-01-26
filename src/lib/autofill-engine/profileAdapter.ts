@@ -54,6 +54,7 @@ export function buildAutofillProfile(profile: WorkspaceProfile): AutofillProfile
   const educationInfo = baseInfo.education ?? {};
   const preferences = baseInfo.preferences ?? {};
   const defaultAnswers = baseInfo.defaultAnswers ?? {};
+  const contactPassword = pickText(contact.password);
 
   const resumeProfile = profile.baseResume?.Profile ?? {};
   const resumeContact = resumeProfile.contact ?? {};
@@ -64,6 +65,7 @@ export function buildAutofillProfile(profile: WorkspaceProfile): AutofillProfile
   const firstName = pickText(baseInfo.name?.first, nameParts.first);
   const lastName = pickText(baseInfo.name?.last, nameParts.last);
   const middleName = pickText(nameParts.middle);
+  const familyName = pickText(baseInfo.name?.family, lastName);
 
   const rawPhone = pickText(contact.phone, resumeContact.phone);
   let countryCode = pickText(contact.phoneCode);
@@ -141,12 +143,15 @@ export function buildAutofillProfile(profile: WorkspaceProfile): AutofillProfile
       firstName,
       middleName,
       lastName,
+      familyName,
       address: pickText(location.address, resumeContact.location),
+      streetName: pickText(location.streetName, location.address, resumeContact.location),
       city: pickText(location.city),
       state: pickText(location.state),
       postalCode: pickText(location.postalCode),
       country: pickText(location.country),
       email: pickText(contact.email, resumeContact.email),
+      password: contactPassword,
       phone: {
         countryCode,
         number,

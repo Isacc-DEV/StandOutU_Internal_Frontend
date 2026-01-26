@@ -4,16 +4,17 @@
 
 import { FormField, FillResult } from './types'
 import { Profile } from "./profile";
-import { DOMAIN_FIELD_MATCHERS } from './domainFieldMatchers'
+import { getDomainFieldMatchers } from './domainFieldMatchers'
 import { fieldFiller } from './fieldFiller'
 import { getCountryInfoFromCode } from './phoneUtils'
 
 const log = (_message: string, _data?: Record<string, unknown>) => {}
 
 export class StandardFieldsHandler {
-  async fillStandardFields(fields: FormField[], profile: Profile): Promise<FillResult> {
+  async fillStandardFields(fields: FormField[], profile: Profile, engineMode: "greenhouse" | "workday" | "common"): Promise<FillResult> {
     let filledCount = 0
     let unmatchedCount = 0
+    const matchers = getDomainFieldMatchers(engineMode)
     
     // Check if there's a separate phoneCountry field
     const hasPhoneCountryField = fields.some(f => f.key === 'phoneCountry')
@@ -25,7 +26,7 @@ export class StandardFieldsHandler {
         continue
       }
       
-      const matcher = DOMAIN_FIELD_MATCHERS[field.key]
+      const matcher = matchers[field.key]
       if (!matcher) {
         unmatchedCount++
         continue
@@ -50,51 +51,38 @@ export class StandardFieldsHandler {
         }
       }
       
-      // Handle selects with validation
-      if (field.type === 'select' && field.element instanceof HTMLSelectElement) {
+      const isSingleSelect = field.type === 'select' || field.type === 'react-select'
+      const isMultiSelect = field.type === 'react-multi-select'
+
+      // Handle select-like fields with validation
+      if (isSingleSelect || isMultiSelect) {
         if (!value) {
-          const success = await fieldFiller.selectFirstOption(field.element)
-          if (success) {
-            filledCount++
+          if (field.element instanceof HTMLSelectElement && isSingleSelect) {
+            const success = await fieldFiller.selectFirstOption(field.element)
+            if (success) {
+              filledCount++
+            } else {
+              unmatchedCount++
+            }
           } else {
             unmatchedCount++
           }
           continue
         }
-        
-        // Validate if value exists in options
-        const valueExists = await fieldFiller.validateSelectValue(field.element, value)
-        if (!valueExists) {
-          // Move to custom questions - don't fill
-          unmatchedCount++
-          continue
-        }
-        
-        // Fill with validated value
-        const success = await fieldFiller.fillField(field, value)
-        if (success) {
-          filledCount++
-        } else {
-          unmatchedCount++
-        }
-        continue
-      }
 
-      // Handle React-Select with validation
-      if (field.type === 'react-select' || field.type === 'react-multi-select') {
-        if (!value) {
-          unmatchedCount++
-          continue
+        let valueExists = true
+        if (field.element instanceof HTMLSelectElement) {
+          valueExists = await fieldFiller.validateSelectValue(field.element, value)
+        } else if (field.options && field.options.length > 0) {
+          valueExists = await fieldFiller.validateReactSelectValue(field.element as HTMLInputElement, value, field.options)
         }
-        
-        // Validate if value exists in options
-        const valueExists = await fieldFiller.validateReactSelectValue(field.element as HTMLInputElement, value, field.options)
+
         if (!valueExists) {
           // Move to custom questions - don't fill
           unmatchedCount++
           continue
         }
-        
+
         const success = await fieldFiller.fillField(field, value)
         if (success) {
           filledCount++

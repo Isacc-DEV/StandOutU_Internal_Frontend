@@ -17,7 +17,13 @@ import ManagerShell from "../../../components/ManagerShell";
 
 type BaseInfo = {
   name?: { first?: string; last?: string };
-  contact?: { email?: string; phone?: string; phoneCode?: string; phoneNumber?: string };
+  contact?: {
+    email?: string;
+    phone?: string;
+    phoneCode?: string;
+    phoneNumber?: string;
+    password?: string;
+  };
   location?: { address?: string; city?: string; state?: string; country?: string; postalCode?: string };
   career?: { jobTitle?: string; currentCompany?: string; yearsExp?: string | number; desiredSalary?: string };
   education?: { school?: string; degree?: string; majorField?: string; graduationAt?: string };
@@ -1244,6 +1250,7 @@ export default function ManagerProfilesPage() {
                               <LabeledInput label="First name" value={draft.name?.first ?? ""} onChange={(v) => updateBase("name.first", v)} />
                               <LabeledInput label="Last name" value={draft.name?.last ?? ""} onChange={(v) => updateBase("name.last", v)} />
                               <LabeledInput label="Email" value={draft.contact?.email ?? ""} onChange={(v) => updateBase("contact.email", v)} />
+                              <LabeledInput label="Password" type="password" value={draft.contact?.password ?? ""} onChange={(v) => updateBase("contact.password", v)} />
                               <LabeledInput label="Phone code" value={draft.contact?.phoneCode ?? ""} onChange={(v) => updateBase("contact.phoneCode", v)} />
                               <LabeledInput label="Phone number" value={draft.contact?.phoneNumber ?? ""} onChange={(v) => updateBase("contact.phoneNumber", v)} />
                               <LabeledInput label="LinkedIn" value={draft.links?.linkedin ?? ""} onChange={(v) => updateBase("links.linkedin", v)} />
@@ -1254,6 +1261,7 @@ export default function ManagerProfilesPage() {
                               <ReadRow label="First name" value={draft.name?.first ?? "-"} />
                               <ReadRow label="Last name" value={draft.name?.last ?? "-"} />
                               <ReadRow label="Email" value={draft.contact?.email ?? "-"} />
+                              <ReadRow label="Password" value={draft.contact?.password ?? "-"} />
                               <ReadRow label="Phone code" value={draft.contact?.phoneCode ?? "-"} />
                               <ReadRow label="Phone number" value={draft.contact?.phoneNumber ?? "-"} />
                               <ReadRow label="Phone (combined)" value={formatPhone(draft.contact)} />
@@ -2461,6 +2469,12 @@ export default function ManagerProfilesPage() {
                     onChange={(v) => setCreateForm((f) => ({ ...f, email: v }))}
                   />
                   <LabeledInput
+                    label="Password"
+                    type="password"
+                    value={createForm.password}
+                    onChange={(v) => setCreateForm((f) => ({ ...f, password: v }))}
+                  />
+                  <LabeledInput
                     label="First name"
                     value={createForm.firstName}
                     onChange={(v) => setCreateForm((f) => ({ ...f, firstName: v }))}
@@ -2788,6 +2802,7 @@ export default function ManagerProfilesPage() {
         name: { first: createForm.firstName, last: createForm.lastName },
         contact: {
           email: createForm.email,
+          password: createForm.password,
           phoneCode: createForm.phoneCode,
           phoneNumber: createForm.phoneNumber,
         },
@@ -2903,6 +2918,9 @@ function updateBase(path: string, value: string | boolean) {
         break;
       case "contact.email":
         next.contact = { ...next.contact, email: String(value) };
+        break;
+      case "contact.password":
+        next.contact = { ...next.contact, password: String(value) };
         break;
       case "contact.phoneCode":
         next.contact = { ...next.contact, phoneCode: String(value) };
@@ -3098,6 +3116,7 @@ function cleanBaseInfo(base: BaseInfo): BaseInfo {
       phone: formatPhone(base?.contact),
       phoneCode: cleanString(base?.contact?.phoneCode),
       phoneNumber: cleanString(base?.contact?.phoneNumber),
+      password: cleanString(base?.contact?.password),
     },
     location: {
       address: cleanString(base?.location?.address),
@@ -3319,6 +3338,7 @@ function getEmptyCreateForm() {
     firstName: "",
     lastName: "",
     email: "",
+    password: "",
     phoneCode: "",
     phoneNumber: "",
     address: "",
@@ -3342,17 +3362,20 @@ function LabeledInput({
   label,
   value,
   onChange,
+  type = "text",
   disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  type?: string;
   disabled?: boolean;
 }) {
   return (
     <label className="space-y-1">
       <span className="text-xs uppercase tracking-[0.18em] text-slate-600">{label}</span>
       <input
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}

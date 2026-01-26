@@ -143,7 +143,7 @@ export default function WorkspaceTabsBar({
               onContextMenu={(event) => handleOpenMenu(event, tab.id)}
               className={`group cursor-pointer flex min-w-[140px] max-w-[220px] items-center gap-2 rounded-t-lg px-3 py-2 text-xs font-semibold shadow-sm transition ${
                 isActive
-                  ? "bg-white/80 text-slate-900 shadow-md border-b-2 border-blue-500 hover:bg-slate-200"
+                  ? "bg-white/80 text-slate-900 shadow-md border-t-3 border-blue-500 hover:bg-slate-200"
                   : "bg-slate-300/80 text-slate-600 hover:bg-slate-200"
               }`}
               title={tab.title || tab.url || ""}

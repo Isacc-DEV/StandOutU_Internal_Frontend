@@ -3,11 +3,33 @@ import {
   GREENHOUSE_FIELD_MATCHERS,
   type GreenhouseFieldMatcher,
 } from "./config/domains/greenhouse/fieldMatchers.config";
+import { WORKDAY_FIELD_MATCHERS } from "./config/domains/workday/fieldMatchers.config";
+import { EngineMode } from "./types";
 
 export type DomainFieldMatcher = GreenhouseFieldMatcher;
 export const DOMAIN_FIELD_MATCHERS = GREENHOUSE_FIELD_MATCHERS;
 
-export function matchDomainField(element: HTMLElement): string | null {
+export const getDomainFieldMatchers = (engineMode: EngineMode) => {
+  if (engineMode === "workday") {
+    return WORKDAY_FIELD_MATCHERS;
+  }
+  return GREENHOUSE_FIELD_MATCHERS;
+};
+
+const findClosestLabelElement = (element: HTMLElement): HTMLLabelElement | null => {
+  let currentElement: HTMLElement | null = element
+  for (let i = 0; i < 10; i++) {
+    const parent = currentElement?.parentElement as HTMLElement | null
+    const label = parent?.querySelector("label")
+    if (label) {
+      return label
+    }
+    currentElement = parent
+  }
+  return null
+}
+
+export function matchDomainField(element: HTMLElement, engineMode: EngineMode): { key: string, label: string } {
   const id = element.getAttribute('id') || ''
   const name = element.getAttribute('name') || ''
   const label = element.getAttribute('aria-label') || ''
@@ -32,23 +54,54 @@ export function matchDomainField(element: HTMLElement): string | null {
     ".phone-input",
     ".phone-input__country",
   ].join(", ");
-  const labelElement = element
-    .closest(labelContainerSelector)
-    ?.querySelector("label")
+
+  let labelElement: HTMLLabelElement | null = null
+  switch (engineMode) {
+    case 'greenhouse':
+      labelElement = element.closest(labelContainerSelector)?.querySelector("label") as HTMLLabelElement | null
+      break
+    case 'workday':
+      labelElement = findClosestLabelElement(element)
+      break
+    default:
+      labelElement = findClosestLabelElement(element)
+      break
+  }
+
   const labelText = labelElement?.textContent || ''
-  
+  const normalizedLabelText = labelText.replace(/\*/g, '').replace(/[:;]$/g, '').trim().toLowerCase()
+
+  console.log('labelText', labelText)
   const textToMatch = `${id} ${name} ${label} ${placeholder} ${labelText} ${ariaDescription} ${ariaLabelText}`.toLowerCase()
+  const matchers = getDomainFieldMatchers(engineMode)
+
+  if (engineMode === 'workday') {
+    if (/^(street name|street address|address line 1|address line1)$/i.test(normalizedLabelText)) {
+      return { key: 'streetName', label: labelText }
+    }
+    if (/^city$/i.test(normalizedLabelText)) {
+      return { key: 'city', label: labelText }
+    }
+    if (/^(postal code|zip|zip code|postcode)$/i.test(normalizedLabelText)) {
+      return { key: 'postalCode', label: labelText }
+    }
+  }
   
   // Special check for phone country code selector
   const isPhoneCountry = element.closest('.phone-input__country') !== null || 
                          element.closest('.phone-input') !== null ||
-                         /country.*label/i.test(ariaLabelledBy || '') && /phone/i.test(textToMatch)
+                         /country.*label/i.test(ariaLabelledBy || '') && /phone/i.test(textToMatch) ||
+                         (textToMatch.includes('country') && (textToMatch.includes('phone') || textToMatch.includes('dial')))
   
-  if (isPhoneCountry && id === 'country') {
-    return 'phoneCountry'
+  if (isPhoneCountry) {
+    return { key: 'phoneCountry', label: labelText }
+  }
+
+  if (normalizedLabelText === 'country') {
+    return { key: 'country', label: labelText }
   }
   
-  for (const [fieldKey, matcher] of Object.entries(DOMAIN_FIELD_MATCHERS)) {
+  for (const [fieldKey, matcher] of Object.entries(matchers)) {
     // Skip country matcher if this is a phone country selector
     if (fieldKey === 'country' && isPhoneCountry) {
       continue
@@ -56,10 +109,10 @@ export function matchDomainField(element: HTMLElement): string | null {
     
     for (const pattern of matcher.patterns) {
       if (pattern.test(textToMatch)) {
-        return fieldKey
+        return { key: fieldKey, label: labelText }
       }
     }
   }
   
-  return null
+  return { key: '', label: labelText }
 }
