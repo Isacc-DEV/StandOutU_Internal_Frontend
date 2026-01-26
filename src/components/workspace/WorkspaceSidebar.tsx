@@ -1,6 +1,6 @@
 import { Check, Copy, FileText, RefreshCw, Sparkles } from "lucide-react";
 import { useRef, useState } from "react";
-import type { BaseInfo, Profile } from "@/app/workspace/types";
+import type { BaseInfo, BaseResume, Profile } from "@/app/workspace/types";
 
 type WorkspaceSidebarProps = {
   profiles: Profile[];
@@ -17,6 +17,7 @@ type WorkspaceSidebarProps = {
   onToggleBaseInfo: () => void;
   baseDraft: BaseInfo;
   phoneCombined: string;
+  baseResume?: BaseResume | null;
 };
 
 function BaseInfoField({
@@ -90,8 +91,10 @@ export default function WorkspaceSidebar({
   onToggleBaseInfo,
   baseDraft,
   phoneCombined,
+  baseResume,
 }: WorkspaceSidebarProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showResumeInfo, setShowResumeInfo] = useState(false);
   const copyTimeoutRef = useRef<number | null>(null);
   const contact = baseDraft?.contact;
   const location = baseDraft?.location;
@@ -109,6 +112,14 @@ export default function WorkspaceSidebar({
     copyTimeoutRef.current = window.setTimeout(() => {
       setCopiedField(null);
     }, 1200);
+  };
+
+  const resumeWork = baseResume?.workExperience ?? [];
+  const resumeEducation = baseResume?.education ?? [];
+
+  const formatDates = (start?: string, end?: string) => {
+    if (!start && !end) return "";
+    return [start, end ?? "Present"].filter(Boolean).join(" - ");
   };
   return (
     <section
@@ -294,6 +305,97 @@ export default function WorkspaceSidebar({
                   copied={copiedField === "LinkedIn"}
                   onCopySuccess={handleCopySuccess}
                 />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border border-slate-700 shadow-sm">
+          <div
+            onClick={() => setShowResumeInfo((prev) => !prev)}
+            className="pr-2 pl-4 py-2 flex items-center justify-between cursor-pointer"
+          >
+            <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">
+              Resume
+            </p>
+            <button
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
+              aria-label={showResumeInfo ? "Collapse" : "Expand"}
+            >
+              <svg
+                className={`h-4 w-4 transition-transform ${showResumeInfo ? "rotate-90" : ""}`}
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          </div>
+
+          {showResumeInfo ? (
+            <div className="rounded-2xl px-4 pb-4 text-sm text-slate-100">
+              <div className="mt-3 space-y-4">
+                <div>
+                  <p className="text-[11px] pl-1 font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Work Experience
+                  </p>
+                  {resumeWork.length ? (
+                    <div className="mt-2 space-y-3">
+                      {resumeWork.map((role, index) => {
+                        const dates = formatDates(role.startDate, role.endDate);
+                        return (
+                          <div
+                            key={`${role.companyTitle || "role"}-${index}`}
+                            className={`pl-1 ${index > 0 ? "border-t border-slate-800 pt-3" : ""}`}
+                          >
+                            <p className="text-sm text-slate-300">
+                              {role.companyTitle || "---"}
+                            </p>
+                            <p className="text-sm text-slate-100">
+                              {role.roleTitle || "---"}
+                            </p>
+                            <div className="flex flex-wrap gap-2 text-xs text-slate-400">
+                              {dates ? <span>{dates}</span> : null}
+                              {role.location ? <span>{role.location}</span> : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="pl-1 text-sm text-slate-100">---</p>
+                  )}
+                </div>
+                <div className="h-px bg-slate-800" />
+                <div>
+                  <p className="text-[11px] pl-1 font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Education
+                  </p>
+                  {resumeEducation.length ? (
+                    <div className="mt-2 space-y-2">
+                      {resumeEducation.map((edu, index) => {
+                        const primaryLine = [edu.degree, edu.institution].filter(Boolean).join(" - ");
+                        const secondaryLine = [edu.field, edu.date].filter(Boolean).join(" • ");
+                        return (
+                          <div
+                            key={`${edu.institution || "edu"}-${index}`}
+                            className={`pl-1 ${index > 0 ? "border-t border-slate-800 pt-3" : ""}`}
+                          >
+                            <p className="text-sm text-slate-100">{primaryLine || "---"}</p>
+                            {secondaryLine ? (
+                              <p className="text-xs text-slate-400">{secondaryLine}</p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="pl-1 text-sm text-slate-100">---</p>
+                  )}
+                </div>
               </div>
             </div>
           ) : null}
