@@ -129,7 +129,7 @@ export default function WorkspaceTabsBar({
 
   return (
     <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-100 px-3 pt-3 overflow-visible">
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pb-2">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           const meta = tab.title
@@ -141,7 +141,7 @@ export default function WorkspaceTabsBar({
               type="button"
               onClick={() => onSelectTab(tab.id)}
               onContextMenu={(event) => handleOpenMenu(event, tab.id)}
-              className={`group cursor-pointer flex min-w-[140px] max-w-[220px] items-center gap-2 rounded-t-lg px-3 py-2 text-xs font-semibold shadow-sm transition ${
+              className={`group cursor-pointer flex flex-1 basis-0 min-w-0 items-center gap-2 rounded-t-lg px-3 py-2 text-xs font-semibold shadow-sm transition-all duration-200 ${
                 isActive
                   ? "bg-white/80 text-slate-900 shadow-md border-t-3 border-blue-500 hover:bg-slate-200"
                   : "bg-slate-300/80 text-slate-600 hover:bg-slate-200"
@@ -167,7 +167,7 @@ export default function WorkspaceTabsBar({
                     event.stopPropagation();
                     onCloseTab(tab.id);
                   }}
-                  className="flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                  className="flex h-5 w-5 items-center justify-center rounded-full text-slate-400 transition-all duration-150 hover:bg-slate-200 hover:text-slate-700"
                   aria-label="Close tab"
                 >
                   <X className="h-3.5 w-3.5" />
