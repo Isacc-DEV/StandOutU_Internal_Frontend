@@ -29,8 +29,6 @@ yarn-error.log*
 
 # local env files
 .env*.local
-.env
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -196,3 +194,4 @@ temp/
 **/public/sw.js.map
 **/public/workbox-*.js.map
 **/public/worker-*.js.map
+config.bat
