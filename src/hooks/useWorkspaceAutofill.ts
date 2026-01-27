@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import type { MutableRefObject } from "react";
+import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type {
   AutofillResponse,
   ApplicationSession,
@@ -26,6 +26,8 @@ type UseWorkspaceAutofillOptions = {
   isElectron: boolean;
   browserSrc: string;
   webviewRef: MutableRefObject<WebviewHandle | null>;
+  webviewRefsByTab?: MutableRefObject<Record<string, WebviewHandle | null>>;
+  activeTabId?: string | null;
   webviewStatus: "idle" | "loading" | "ready" | "failed";
   collectWebviewFields: () => Promise<PageFieldCandidate[]>;
   applyAutofillActions: (actions: FillPlanAction[]) => Promise<{
@@ -35,6 +37,7 @@ type UseWorkspaceAutofillOptions = {
   setLoadingAction: (value: string) => void;
   setSession: (value: ApplicationSession | null) => void;
   showError: (message: string) => void;
+  setAutofillTabIds?: Dispatch<SetStateAction<string[]>>;
 };
 
 export function useWorkspaceAutofill({
@@ -44,12 +47,15 @@ export function useWorkspaceAutofill({
   isElectron,
   browserSrc,
   webviewRef,
+  webviewRefsByTab,
+  activeTabId,
   webviewStatus,
   collectWebviewFields,
   applyAutofillActions,
   setLoadingAction,
   setSession,
   showError,
+  setAutofillTabIds,
 }: UseWorkspaceAutofillOptions) {
   type DomainAiResponse = {
     answers: AIQuestionResponse[];
@@ -60,6 +66,7 @@ export function useWorkspaceAutofill({
   };
   const runtimeSourceRef = useRef<string | null>(null);
   const runtimeSourcePromiseRef = useRef<Promise<string | null> | null>(null);
+  const activeAutofillCountRef = useRef(0);
   const debug = (message: string, data?: Record<string, unknown>) => {
     if (data) {
       console.log("[autofill]", message, data);
@@ -82,26 +89,31 @@ export function useWorkspaceAutofill({
       isElectron,
       webviewStatus,
     });
+    activeAutofillCountRef.current += 1;
     setLoadingAction("autofill");
+    const resolvedTabId = activeTabId ?? "";
+    const resolvedView =
+      (isElectron &&
+        resolvedTabId &&
+        webviewRefsByTab?.current?.[resolvedTabId]) ||
+      webviewRef.current;
     try {
       const isDesktop = isElectron;
-      if (isDesktop && !webviewRef.current) {
+      if (isDesktop && !resolvedView) {
         debug("blocked: webview not ready");
         showError("Embedded browser is not ready yet. Try again in a moment.");
-        setLoadingAction("");
         return;
       }
       if (isDesktop && webviewStatus === "failed") {
         debug("blocked: webview failed to load");
         showError("Embedded browser failed to load. Try again or open in a browser tab.");
-        setLoadingAction("");
         return;
       }
 
       if (isDesktop && selectedProfile) {
         debug("building autofill profile", { profileId: selectedProfile.id });
         const autofillProfile = buildWorkspaceAutofillProfile(selectedProfile);
-        if (autofillProfile && webviewRef.current) {
+        if (autofillProfile && resolvedView) {
           debug("building autofill runtime script", { engineMode: "auto" });
           const runtimeUrl =
             (process.env.NEXT_PUBLIC_AUTOFILL_RUNTIME_URL || "").trim() ||
@@ -125,28 +137,33 @@ export function useWorkspaceAutofill({
             return result;
           };
           const runtimeSource = await loadRuntimeSource();
-          let aiAnswerOverrides: AIQuestionResponse[] | undefined;
-          let aiAnswerDebug:
-            | {
-                prompt?: string;
-                rawResponse?: string;
-              }
-            | undefined;
+          const runRuntimeAutofill = async (
+            view: WebviewHandle,
+            label: string
+          ): Promise<AutofillRuntimeResult | undefined> => {
+            let aiAnswerOverrides: AIQuestionResponse[] | undefined;
+            let aiAnswerDebug:
+              | {
+                  prompt?: string;
+                  rawResponse?: string;
+                }
+              | undefined;
+            const debugTag = label || "";
 
-          if (webviewRef.current) {
             try {
               const collectScript = buildCollectDomainQuestionsScript(
                 autofillProfile,
-                { engineMode: "auto", debug: true, debugTag: "" },
+                { engineMode: "auto", debug: true, debugTag },
                 runtimeUrl,
                 runtimeSource || undefined
               );
-              const aiQuestions = (await webviewRef.current.executeJavaScript(
+              const aiQuestions = (await view.executeJavaScript(
                 collectScript,
                 true
               )) as DomainAiQuestionPayload[] | undefined;
               if (Array.isArray(aiQuestions) && aiQuestions.length > 0) {
                 debug("requesting autofill AI answers", {
+                  tab: label,
                   count: aiQuestions.length,
                   questions: aiQuestions.map((question) => ({
                     id: question.id,
@@ -166,7 +183,10 @@ export function useWorkspaceAutofill({
                 })) as DomainAiResponse;
                 if (Array.isArray(aiResponse?.answers)) {
                   aiAnswerOverrides = aiResponse.answers;
-                  debug("received autofill AI answers", { count: aiAnswerOverrides.length });
+                  debug("received autofill AI answers", {
+                    tab: label,
+                    count: aiAnswerOverrides.length,
+                  });
                   if (aiResponse.prompt || aiResponse.rawResponse) {
                     aiAnswerDebug = {
                       prompt: aiResponse.prompt,
@@ -174,77 +194,96 @@ export function useWorkspaceAutofill({
                     };
                   }
                   if (aiResponse.prompt) {
-                    logLargeText("autofill AI prompt", aiResponse.prompt);
+                    logLargeText(`autofill AI prompt${label ? ` (${label})` : ""}`, aiResponse.prompt);
                   }
                   if (aiResponse.rawResponse) {
-                    logLargeText("autofill AI raw response", aiResponse.rawResponse);
+                    logLargeText(
+                      `autofill AI raw response${label ? ` (${label})` : ""}`,
+                      aiResponse.rawResponse
+                    );
                   }
                 }
               } else {
-                debug("autofill AI skipped: no custom questions detected");
+                debug("autofill AI skipped: no custom questions detected", { tab: label });
               }
             } catch (err) {
               debug("autofill AI answers failed", {
+                tab: label,
                 message: err instanceof Error ? err.message : "unknown",
               });
             }
+
+            const script = buildAutofillScript(
+              autofillProfile,
+              {
+                engineMode: "auto",
+                aiAnswerOverrides,
+                aiAnswerDebug,
+                debug: true,
+                debugTag,
+              },
+              runtimeUrl,
+              runtimeSource || undefined
+            );
+            debug("executing autofill runtime in webview", {
+              tab: label,
+              scriptBytes: script.length,
+            });
+            const result = (await view.executeJavaScript(
+              script,
+              true
+            )) as AutofillRuntimeResult | undefined;
+            debug("autofill runtime result", {
+              tab: label,
+              success: result?.success,
+              engine: result?.engine,
+              redirect: Boolean(result?.redirectUrl),
+              error: result?.error,
+              aiQuestionsHandled: result?.aiQuestionsHandled,
+            });
+            if (result?.redirectUrl) {
+              debug("redirecting to greenhouse form", {
+                tab: label,
+                redirectUrl: result.redirectUrl,
+              });
+              if (view?.loadURL) {
+                view.loadURL(result.redirectUrl);
+              } else {
+                view.setAttribute("src", result.redirectUrl);
+              }
+              showError(
+                "Detected an embedded Greenhouse form. Opened the Greenhouse page directly; run autofill again once it loads."
+              );
+            }
+            return result;
+          };
+
+          let activeRuntimeResult: AutofillRuntimeResult | undefined;
+          if (resolvedView) {
+            if (resolvedTabId) {
+              setAutofillTabIds?.((prev) =>
+                prev.includes(resolvedTabId) ? prev : [...prev, resolvedTabId]
+              );
+            }
+            activeRuntimeResult = await runRuntimeAutofill(
+              resolvedView,
+              resolvedTabId
+            );
           }
 
-          const script = buildAutofillScript(
-            autofillProfile,
-            {
-              engineMode: "auto",
-              aiAnswerOverrides,
-              aiAnswerDebug,
-              debug: true,
-              debugTag: "",
-            },
-            runtimeUrl,
-            runtimeSource || undefined
-          );
-          debug("executing autofill runtime in webview", { scriptBytes: script.length });
-          const autofillResult = (await webviewRef.current.executeJavaScript(
-            script,
-            true
-          )) as AutofillRuntimeResult | undefined;
-          debug("autofill runtime result", {
-            success: autofillResult?.success,
-            engine: autofillResult?.engine,
-            redirect: Boolean(autofillResult?.redirectUrl),
-            error: autofillResult?.error,
-            aiQuestionsHandled: autofillResult?.aiQuestionsHandled,
-          });
-          if (autofillResult?.redirectUrl) {
-            debug("redirecting to greenhouse form", {
-              redirectUrl: autofillResult.redirectUrl,
-            });
-            const view = webviewRef.current;
-            if (view?.loadURL) {
-              view.loadURL(autofillResult.redirectUrl);
-            } else if (view) {
-              view.setAttribute("src", autofillResult.redirectUrl);
-            }
-            showError(
-              "Detected an embedded Greenhouse form. Opened the Greenhouse page directly; run autofill again once it loads."
-            );
-            setLoadingAction("");
-            return;
-          }
-          if (autofillResult?.success) {
+          if (activeRuntimeResult?.success) {
             debug("autofill runtime succeeded");
             setSession({
               ...session,
               status: "FILLED",
             });
-            setLoadingAction("");
             return;
           }
-          if (autofillResult?.engine === "greenhouse") {
+          if (activeRuntimeResult?.engine === "greenhouse") {
             debug("greenhouse autofill failed", {
-              error: autofillResult.error || "unknown",
+              error: activeRuntimeResult.error || "unknown",
             });
-            showError(autofillResult.error || "Greenhouse autofill failed.");
-            setLoadingAction("");
+            showError(activeRuntimeResult.error || "Greenhouse autofill failed.");
             return;
           }
         }
@@ -255,7 +294,6 @@ export function useWorkspaceAutofill({
       if (isDesktop && pageFields.length === 0) {
         debug("blocked: no fields detected");
         showError("No form fields detected in the embedded browser. Try again after the form loads.");
-        setLoadingAction("");
         return;
       }
       debug("requesting backend autofill plan", { sessionId: session.id });
@@ -293,9 +331,16 @@ export function useWorkspaceAutofill({
       });
       showError("Autofill failed. Backend must be running.");
     } finally {
-      setLoadingAction("");
+      if (resolvedTabId) {
+        setAutofillTabIds?.((prev) => prev.filter((id) => id !== resolvedTabId));
+      }
+      activeAutofillCountRef.current = Math.max(activeAutofillCountRef.current - 1, 0);
+      if (activeAutofillCountRef.current === 0) {
+        setLoadingAction("");
+      }
     }
   }, [
+    activeTabId,
     api,
     applyAutofillActions,
     browserSrc,
@@ -303,10 +348,12 @@ export function useWorkspaceAutofill({
     isElectron,
     selectedProfile,
     session,
+    setAutofillTabIds,
     setLoadingAction,
     setSession,
     showError,
     webviewRef,
+    webviewRefsByTab,
     webviewStatus,
   ]);
 

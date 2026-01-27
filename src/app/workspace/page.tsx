@@ -15,6 +15,7 @@ import type {
   BaseResume,
   ApplicationSession,
   ApplicationPhraseResponse,
+  WebviewHandle,
 } from "./types";
 import { workspaceApi as api } from "@/lib/api";
 import { EMPTY_RESUME_PREVIEW } from "@/lib/constants";
@@ -80,6 +81,7 @@ export default function Page() {
   const [tabs, setTabs] = useState<{ id: string; url: string }[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [loadingTabId, setLoadingTabId] = useState<string | null>(null);
+  const [autofillTabIds, setAutofillTabIds] = useState<string[]>([]);
   const [tabType, setTabType] = useState<"links" | "profiles">("links");
   const aiProvider = useSyncExternalStore(
     subscribeToStorage,
@@ -92,6 +94,7 @@ export default function Page() {
   const autoReconnectUrlRef = useRef<string>("");
   const lastQueryUrlRef = useRef<string>("");
   const pendingGoTabIdRef = useRef<string | null>(null);
+  const webviewRefsByTabRef = useRef<Record<string, WebviewHandle | null>>({});
 
   const router = useRouter();
   const isClient = typeof window !== "undefined";
@@ -404,6 +407,14 @@ export default function Page() {
     setCheckEnabled,
   });
 
+  const setWebviewRefForTab = useCallback((tabId: string, node: WebviewHandle | null) => {
+    if (node) {
+      webviewRefsByTabRef.current[tabId] = node;
+    } else {
+      delete webviewRefsByTabRef.current[tabId];
+    }
+  }, []);
+
   const handleSelectProfile = useCallback(
     (profileId: string) => {
       setSelectedProfileId(profileId);
@@ -536,17 +547,33 @@ export default function Page() {
 
   const tabsForView = useMemo(() => {
     if (tabType === "profiles") {
-      return profiles.map((profile) => ({
-        id: profile.id,
-        title: profile.displayName,
-      }));
+      return profiles.map((profile) => {
+        const entry = getProfileTabsEntry(profile.id);
+        return {
+          id: profile.id,
+          title: profile.displayName,
+          url: entry?.lastVisitedLink ?? "",
+        };
+      });
     }
     return tabs;
-  }, [profiles, tabType, tabs]);
+  }, [getProfileTabsEntry, profiles, tabType, tabs]);
 
   const activeTabIdForView = tabType === "profiles"
     ? (selectedProfileId || null)
     : activeTabId;
+  const activeAutofill = Boolean(
+    activeTabIdForView && autofillTabIds.includes(activeTabIdForView)
+  );
+
+  useEffect(() => {
+    const validIds = new Set(tabsForView.map((tab) => tab.id));
+    Object.keys(webviewRefsByTabRef.current).forEach((tabId) => {
+      if (!validIds.has(tabId)) {
+        delete webviewRefsByTabRef.current[tabId];
+      }
+    });
+  }, [tabsForView]);
 
   useEffect(() => {
     if (tabType !== "links") return;
@@ -698,15 +725,16 @@ export default function Page() {
       }
       const nextTab = tabs.find((tab) => tab.id === tabId);
       if (!nextTab) return;
-      handleUrlChange(nextTab.url);
+      const nextUrl = nextTab.url;
       setActiveTabId(nextTab.id);
       setLoadingTabId(null);
-      if (nextTab.url.trim()) {
-        pendingGoTabIdRef.current = nextTab.id;
-        void handleGo(nextTab.url);
-      }
+      pendingGoTabIdRef.current = null;
+      setHasEditedUrl(Boolean(nextUrl));
+      setUrl(nextUrl);
+      setLoadedUrl(nextUrl);
+      setNavigationStarted(Boolean(nextUrl));
     },
-    [handleGo, handleSelectProfile, handleUrlChange, selectedProfileId, tabType, tabs]
+    [handleSelectProfile, selectedProfileId, tabType, tabs]
   );
 
   const handleAddTab = useCallback(() => {
@@ -723,6 +751,7 @@ export default function Page() {
   const handleCloseTab = useCallback(
     (tabId: string) => {
       if (tabType !== "links") return;
+      delete webviewRefsByTabRef.current[tabId];
       setTabs((prev) => {
         const nextTabs = prev.filter((tab) => tab.id !== tabId);
         if (nextTabs.length === 0) {
@@ -740,16 +769,16 @@ export default function Page() {
             nextTabs[currentIndex] || nextTabs[currentIndex - 1] || nextTabs[0];
           setActiveTabId(nextTab.id);
           setLoadingTabId(null);
-          handleUrlChange(nextTab.url);
-          if (nextTab.url.trim()) {
-            pendingGoTabIdRef.current = nextTab.id;
-            void handleGo(nextTab.url);
-          }
+          pendingGoTabIdRef.current = null;
+          setHasEditedUrl(Boolean(nextTab.url));
+          setUrl(nextTab.url);
+          setLoadedUrl(nextTab.url);
+          setNavigationStarted(Boolean(nextTab.url));
         }
         return nextTabs;
       });
     },
-    [activeTabId, handleGo, handleUrlChange, tabType]
+    [activeTabId, tabType]
   );
 
   const handleDuplicateTab = useCallback(
@@ -771,13 +800,13 @@ export default function Page() {
       });
       setActiveTabId(id);
       setLoadingTabId(null);
-      handleUrlChange(sourceTab.url);
-      if (sourceTab.url.trim()) {
-        pendingGoTabIdRef.current = id;
-        void handleGo(sourceTab.url);
-      }
+      pendingGoTabIdRef.current = null;
+      setHasEditedUrl(Boolean(sourceTab.url));
+      setUrl(sourceTab.url);
+      setLoadedUrl(sourceTab.url);
+      setNavigationStarted(Boolean(sourceTab.url));
     },
-    [handleGo, handleUrlChange, tabType, tabs]
+    [tabType, tabs]
   );
 
   const handleTabTypeChange = useCallback(
@@ -864,12 +893,15 @@ export default function Page() {
     isElectron,
     browserSrc,
     webviewRef,
+    webviewRefsByTab: webviewRefsByTabRef,
+    activeTabId: activeTabIdForView,
     webviewStatus,
     collectWebviewFields,
     applyAutofillActions,
     setLoadingAction: setLoadingActionScoped,
     setSession,
     showError,
+    setAutofillTabIds,
   });
 
   const {
@@ -968,8 +1000,8 @@ export default function Page() {
                 onOpenJdModal={handleManualJdInput}
                 tailorLoading={tailorLoading}
                 onAutofill={handleAutofill}
-                autofillDisabled={!session || loadingAction === "autofill"}
-                loadingAction={loadingAction}
+                autofillDisabled={!session || activeAutofill}
+                autofillActive={activeAutofill}
                 showBaseInfo={showBaseInfo}
                 onToggleBaseInfo={() => setShowBaseInfo((v) => !v)}
                 baseDraft={baseDraft}
@@ -1002,7 +1034,9 @@ export default function Page() {
                 isElectron={isElectron}
                 browserSrc={browserSrc}
                 setWebviewRef={setWebviewRef}
+                setWebviewRefForTab={setWebviewRefForTab}
                 webviewPartition={webviewPartition}
+                autofillTabIds={autofillTabIds}
               />
             </div>
           ) : (
