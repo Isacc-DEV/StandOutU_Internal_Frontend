@@ -84,12 +84,15 @@ export function useWorkspaceWebview({
   setCheckEnabled,
 }: UseWorkspaceWebviewOptions) {
   const webviewRef = useRef<WebviewHandle | null>(null);
+  const [activeWebview, setActiveWebview] = useState<WebviewHandle | null>(null);
   const [webviewStatus, setWebviewStatus] = useState<"idle" | "loading" | "ready" | "failed">("idle");
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
 
   const setWebviewRef = useCallback((node: WebviewHandle | null) => {
+    if (webviewRef.current === node) return;
     webviewRef.current = node;
+    setActiveWebview(node);
     if (!node) {
       setWebviewStatus("idle");
       setCheckEnabled(false);
@@ -99,8 +102,14 @@ export function useWorkspaceWebview({
     }
     node.setAttribute("allowpopups", "true");
     if (isElectron) {
-      setWebviewStatus("loading");
-      setCheckEnabled(false);
+      const currentSrc = node.getAttribute("src") || "";
+      if (currentSrc && currentSrc !== "about:blank") {
+        setWebviewStatus("ready");
+        setCheckEnabled(true);
+      } else {
+        setWebviewStatus("loading");
+        setCheckEnabled(false);
+      }
     }
   }, [isElectron, setCanGoBack, setCanGoForward, setCheckEnabled, setWebviewStatus]);
 
@@ -139,8 +148,9 @@ export function useWorkspaceWebview({
   }, []);
 
   useEffect(() => {
-    if (!isElectron || !webviewRef.current || !browserSrc) return;
-    const view = webviewRef.current;
+    if (!isElectron) return;
+    const view = activeWebview || webviewRef.current;
+    if (!view) return;
     const electronView = view as ElectronWebviewHandle;
     const checkNavigationState = () => {
       // Try Electron webview API methods first
@@ -329,7 +339,7 @@ export function useWorkspaceWebview({
       if (webContentsCleanup) webContentsCleanup();
       window.removeEventListener("message", messageHandler);
     };
-  }, [isElectron, browserSrc, installSelectionCache, installHotkeyBridge, handleHotkey, setCheckEnabled]);
+  }, [isElectron, activeWebview, installSelectionCache, installHotkeyBridge, handleHotkey, setCheckEnabled]);
 
   const collectWebviewText = useCallback(async (): Promise<string> => {
     const view = webviewRef.current;

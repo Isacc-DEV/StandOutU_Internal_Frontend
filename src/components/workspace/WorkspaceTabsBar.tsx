@@ -1,4 +1,5 @@
 import { Check, Globe, Plus, Settings, X } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 
@@ -128,8 +129,8 @@ export default function WorkspaceTabsBar({
   }
 
   return (
-    <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-100 px-3 pt-3 overflow-visible">
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden pb-2">
+    <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-100 px-3 pt-2 overflow-visible">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           const meta = tab.title
@@ -140,8 +141,16 @@ export default function WorkspaceTabsBar({
               key={tab.id}
               type="button"
               onClick={() => onSelectTab(tab.id)}
+              onMouseDown={(event) => {
+                if (event.button !== 1) return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (tabType === "links") {
+                  onCloseTab(tab.id);
+                }
+              }}
               onContextMenu={(event) => handleOpenMenu(event, tab.id)}
-              className={`group cursor-pointer flex flex-1 basis-0 min-w-0 items-center gap-2 rounded-t-lg px-3 py-2 text-xs font-semibold shadow-sm transition-all duration-200 ${
+              className={`group cursor-pointer flex flex-1 basis-0 min-w-0 max-w-[220px] items-center gap-2 rounded-t-lg px-3 py-2 text-xs font-semibold shadow-sm transition-all duration-200 ${
                 isActive
                   ? "bg-white/80 text-slate-900 shadow-md border-t-3 border-blue-500 hover:bg-slate-200"
                   : "bg-slate-300/80 text-slate-600 hover:bg-slate-200"
@@ -149,14 +158,17 @@ export default function WorkspaceTabsBar({
               title={tab.title || tab.url || ""}
             >
               {meta.favicon ? (
-                <img
+                <Image
                   src={meta.favicon}
                   alt=""
-                  className="h-4 w-4 rounded-sm"
+                  width={16}
+                  height={16}
+                  className="h-4 w-4 min-h-4 min-w-4 rounded-sm"
                   loading="lazy"
+                  unoptimized
                 />
               ) : (
-                <Globe className="h-4 w-4 text-slate-400" />
+                <Globe className="h-4 w-4 min-h-4 min-w-4 text-slate-400" />
               )}
               <span className="truncate text-left flex-1">{meta.title}</span>
               {tabType === "links" ? (

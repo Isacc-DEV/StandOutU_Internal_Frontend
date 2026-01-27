@@ -12,7 +12,7 @@ type WorkspaceSidebarProps = {
   tailorLoading: boolean;
   onAutofill: () => void;
   autofillDisabled: boolean;
-  loadingAction: string;
+  autofillActive: boolean;
   showBaseInfo: boolean;
   onToggleBaseInfo: () => void;
   baseDraft: BaseInfo;
@@ -86,7 +86,7 @@ export default function WorkspaceSidebar({
   tailorLoading,
   onAutofill,
   autofillDisabled,
-  loadingAction,
+  autofillActive,
   showBaseInfo,
   onToggleBaseInfo,
   baseDraft,
@@ -202,15 +202,15 @@ export default function WorkspaceSidebar({
             onClick={onAutofill}
             disabled={autofillDisabled}
             className="flex items-center justify-center w-full rounded-xl bg-indigo-400 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-            title={loadingAction === "autofill" ? "Filling..." : "Autofill"}
+            title={autofillActive ? "Filling..." : "Autofill"}
           >
-            {loadingAction === "autofill" ? (
+            {autofillActive ? (
               <RefreshCw className="w-5 h-5 animate-spin" />
             ) : (
               <Sparkles className="w-5 h-5 mr-2 pr-1" />
             )}
             <span>
-              {loadingAction === "autofill" ? "Filling..." : "Autofill"}
+              {autofillActive ? "Filling..." : "Autofill"}
             </span>
           </button>
         </div>
