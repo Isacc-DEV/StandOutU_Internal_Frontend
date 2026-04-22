@@ -3,25 +3,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "@/components/TopNav";
-import ChatWidget from "@/components/workspace/ChatWidget";
 import JdPreviewModal from "@/components/workspace/JdPreviewModal";
-import ResumePreviewModal from "@/components/workspace/ResumePreviewModal";
 import WorkspaceBrowser from "@/components/workspace/WorkspaceBrowser";
 import WorkspaceSidebar from "@/components/workspace/WorkspaceSidebar";
 import type {
   DesktopBridge,
   Profile,
   BaseInfo,
-  BaseResume,
   ApplicationSession,
   ApplicationPhraseResponse,
+  ResumePreviewTab,
   WebviewHandle,
 } from "./types";
 import { workspaceApi as api } from "@/lib/api";
 import { EMPTY_RESUME_PREVIEW } from "@/lib/constants";
 import {
   buildBulletCountDefaults,
-  buildPromptCompanyTitleKey,
+  buildPromptCompanyTitleKeys,
   cleanBaseInfo,
   formatPhone,
   normalizeBaseResume,
@@ -37,9 +35,7 @@ import { useWorkspaceCheck } from "@/hooks/useWorkspaceCheck";
 import { useWorkspaceAutofill } from "@/hooks/useWorkspaceAutofill";
 import { useWorkspaceResume } from "@/hooks/useWorkspaceResume";
 import {
-  type AiProvider,
   getJobUrlSnapshot,
-  getStoredAiProviderSnapshot,
   getStoredUserSnapshot,
   subscribeToLocation,
   subscribeToStorage,
@@ -55,6 +51,21 @@ import {
   type ProfileTabsEntry,
 } from "@/lib/workspace/storage";
 
+function buildBaseResumePreviewTab(profile?: Profile | null): ResumePreviewTab {
+  const label = profile?.displayName ? `${profile.displayName} 1` : "Resume 1";
+  return {
+    id: profile?.id ? `base-${profile.id}` : "base-resume",
+    label,
+    kind: "base",
+    profileId: profile?.id,
+    resume: normalizeBaseResume(profile?.baseResume),
+  };
+}
+
+function buildAnswerSessionKey(profileId: string, tabId: string) {
+  return profileId && tabId ? `${profileId}:${tabId}` : "";
+}
+
 export default function Page() {
   const user = useSyncExternalStore(subscribeToStorage, getStoredUserSnapshot, () => null);
   const jobUrlFromQuery = useSyncExternalStore(subscribeToLocation, getJobUrlSnapshot, () => "");
@@ -66,7 +77,6 @@ export default function Page() {
   const [loadingAction, setLoadingAction] = useState<string>("");
   const [showBaseInfo, setShowBaseInfo] = useState(false);
   const [baseInfoView, setBaseInfoView] = useState<BaseInfo>(() => cleanBaseInfo({}));
-  const [resumePreviewOpen, setResumePreviewOpen] = useState(false);
   const [jdPreviewOpen, setJdPreviewOpen] = useState(false);
   const [jdDraft, setJdDraft] = useState("");
   const [jdCaptureError, setJdCaptureError] = useState("");
@@ -75,19 +85,13 @@ export default function Page() {
   const [tailorError, setTailorError] = useState("");
   const [tailorPdfLoading, setTailorPdfLoading] = useState(false);
   const [tailorPdfError, setTailorPdfError] = useState("");
-  const [tailoredResume, setTailoredResume] = useState<BaseResume | null>(null);
-  const [llmRawOutput, setLlmRawOutput] = useState("");
-  const [llmMeta, setLlmMeta] = useState<{ provider?: string; model?: string } | null>(null);
+  const [profileResumeTabs, setProfileResumeTabs] = useState<Record<string, ResumePreviewTab[]>>({});
+  const [profileActiveResumeTabIds, setProfileActiveResumeTabIds] = useState<Record<string, string | null>>({});
   const [tabs, setTabs] = useState<{ id: string; url: string }[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [loadingTabId, setLoadingTabId] = useState<string | null>(null);
   const [autofillTabIds, setAutofillTabIds] = useState<string[]>([]);
   const [tabType, setTabType] = useState<"links" | "profiles">("links");
-  const aiProvider = useSyncExternalStore(
-    subscribeToStorage,
-    getStoredAiProviderSnapshot,
-    () => "HUGGINGFACE"
-  );
   const [navigationStarted, setNavigationStarted] = useState(false);
   const [loadedUrl, setLoadedUrl] = useState<string>("");
   const autoGoUrlRef = useRef<string>("");
@@ -148,6 +152,9 @@ export default function Page() {
       options?: { preserveNavigation?: boolean }
     ) => {
       const preserveNavigation = Boolean(options?.preserveNavigation);
+      const profile = profilesList.find((item) => item.id === profileId);
+      const baseResumeTab = profile ? buildBaseResumePreviewTab(profile) : null;
+
       setSession(null);
       setCheckEnabled(false);
       setShowBaseInfo(false);
@@ -162,26 +169,36 @@ export default function Page() {
         setLoadingTabId(null);
       }
 
-      const profile = profilesList.find((item) => item.id === profileId);
       setBaseInfoView(cleanBaseInfo(profile?.baseInfo ?? {}));
 
-      setTailoredResume(null);
+      setTailorLoading(false);
       setTailorError("");
+      setTailorPdfLoading(false);
       setTailorPdfError("");
-      setResumePreviewOpen(false);
+      if (profileId) {
+        setProfileResumeTabs((prev) => {
+          if (!baseResumeTab) return prev;
+          const existingTabs = prev[profileId] ?? [];
+          const generatedTabs = existingTabs.filter((tab) => tab.kind === "generated");
+          return { ...prev, [profileId]: [baseResumeTab, ...generatedTabs] };
+        });
+        setProfileActiveResumeTabIds((prev) => {
+          if (!baseResumeTab) return prev;
+          const currentActive = prev[profileId] ?? null;
+          const shouldKeepActive = Boolean(currentActive && currentActive !== baseResumeTab.id);
+          return { ...prev, [profileId]: shouldKeepActive ? currentActive : baseResumeTab.id };
+        });
+      }
       setJdPreviewOpen(false);
       setJdDraft("");
       setJdCaptureError("");
-      setLlmRawOutput("");
-      setLlmMeta(null);
 
       if (!profile) {
         setBulletCountByCompany({});
         return;
       }
       const normalizedResume = normalizeBaseResume(profile.baseResume);
-      const titleKeys = (normalizedResume.workExperience ?? [])
-        .map((item) => buildPromptCompanyTitleKey(item))
+      const titleKeys = buildPromptCompanyTitleKeys(normalizedResume.workExperience ?? [])
         .filter(Boolean);
       setBulletCountByCompany(
         titleKeys.length
@@ -191,12 +208,6 @@ export default function Page() {
     },
     []
   );
-
-  const handleAiProviderChange = useCallback((value: AiProvider) => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("smartwork_ai_provider", value);
-    window.dispatchEvent(new Event("smartwork-storage"));
-  }, []);
 
   const {
     profiles,
@@ -213,22 +224,6 @@ export default function Page() {
     templateStatusError,
     loadResumeTemplates,
   } = useResumeTemplates({ api, user, selectedProfile });
-
-  const {
-    chatModalOpen,
-    setChatModalOpen,
-    chatMessages,
-    setChatMessages,
-    chatInput,
-    setChatInput,
-    chatLoading,
-    chatProvider,
-    setChatProvider,
-    chatMessagesEndRef,
-    chatInputRef,
-    handleOpenChatModal,
-    handleSendChatMessage,
-  } = useWorkspaceChat({ api, tailoredResume, jdDraft });
 
   const handleManualJdInputRef = useRef<() => void>(() => {});
   const handleAutofillRef = useRef<() => void>(() => {});
@@ -319,18 +314,60 @@ export default function Page() {
     [selectedProfile]
   );
   const companyTitleKeys = useMemo(() => {
-    return (baseResumeView.workExperience ?? [])
-      .map((item) => buildPromptCompanyTitleKey(item))
-      .filter(Boolean);
+    return buildPromptCompanyTitleKeys(baseResumeView.workExperience ?? []).filter(Boolean);
   }, [baseResumeView]);
-  const resumePreviewHtml = useMemo(() => {
-    if (!selectedTemplate || !tailoredResume) return "";
-    return renderResumeTemplate(selectedTemplate.html, tailoredResume);
-  }, [selectedTemplate, tailoredResume]);
-  const resumePreviewDoc = useMemo(() => {
-    const html = resumePreviewHtml.trim();
+  const workExperienceLabels = useMemo(() => {
+    return (baseResumeView.workExperience ?? []).map((item, index) => {
+      const company = (item.companyTitle ?? "").trim();
+      const role = (item.roleTitle ?? "").trim();
+      return company || role || `Experience ${index + 1}`;
+    });
+  }, [baseResumeView]);
+  const resumePreviewTabs = useMemo(
+    () => profileResumeTabs[selectedProfileId] ?? [],
+    [profileResumeTabs, selectedProfileId]
+  );
+  const activeResumeTabId = useMemo(
+    () => profileActiveResumeTabIds[selectedProfileId] ?? null,
+    [profileActiveResumeTabIds, selectedProfileId]
+  );
+  const activeResumeTab = useMemo(() => {
+    if (!resumePreviewTabs.length) return null;
+    return (
+      resumePreviewTabs.find((tab) => tab.id === activeResumeTabId) ?? resumePreviewTabs[0]
+    );
+  }, [activeResumeTabId, resumePreviewTabs]);
+  const activeResumePreviewHtml = useMemo(() => {
+    if (!selectedTemplate || !activeResumeTab) return "";
+    return renderResumeTemplate(selectedTemplate.html, activeResumeTab.resume);
+  }, [activeResumeTab, selectedTemplate]);
+  const activeResumePreviewDoc = useMemo(() => {
+    const html = activeResumePreviewHtml.trim();
     return html ? html : EMPTY_RESUME_PREVIEW;
-  }, [resumePreviewHtml]);
+  }, [activeResumePreviewHtml]);
+  const activeResumeLlmRawOutput =
+    activeResumeTab?.kind === "generated" ? activeResumeTab.llmRawOutput ?? "" : "";
+  const activeResumeLlmMeta =
+    activeResumeTab?.kind === "generated" ? activeResumeTab.llmMeta ?? null : null;
+  const activeAnswerSessionKey =
+    selectedProfileId && activeResumeTab?.id
+      ? buildAnswerSessionKey(selectedProfileId, activeResumeTab.id)
+      : "";
+  const {
+    chatMessages,
+    chatInput,
+    setChatInput,
+    chatLoading,
+    chatMessagesEndRef,
+    chatInputRef,
+    removeChatSession,
+    handleSendChatMessage,
+  } = useWorkspaceChat({
+    api,
+    activeSessionKey: activeAnswerSessionKey,
+    activeResume: activeResumeTab?.resume ?? null,
+    activeJobDescription: activeResumeTab?.jd ?? null,
+  });
 
   const baseDraft = cleanBaseInfo(baseInfoView);
   const phoneCombined = formatPhone(baseDraft.contact) || "N/A";
@@ -380,7 +417,6 @@ export default function Page() {
     },
     []
   );
-
 
   const {
     webviewRef,
@@ -562,8 +598,32 @@ export default function Page() {
   const activeTabIdForView = tabType === "profiles"
     ? (selectedProfileId || null)
     : activeTabId;
-  const activeAutofill = Boolean(
-    activeTabIdForView && autofillTabIds.includes(activeTabIdForView)
+  const handleSelectResumeTab = useCallback(
+    (tabId: string) => {
+      if (!selectedProfileId) return;
+      setProfileActiveResumeTabIds((prev) => ({ ...prev, [selectedProfileId]: tabId }));
+    },
+    [selectedProfileId]
+  );
+
+  const handleCloseResumeTab = useCallback(
+    (tabId: string) => {
+      if (!selectedProfileId) return;
+      removeChatSession(buildAnswerSessionKey(selectedProfileId, tabId));
+      setProfileResumeTabs((prev) => {
+        const currentTabs = prev[selectedProfileId] ?? [];
+        const nextTabs = currentTabs.filter((tab) => tab.id !== tabId);
+        const fallbackTabs = nextTabs.length
+          ? nextTabs
+          : [buildBaseResumePreviewTab(selectedProfile)];
+        setProfileActiveResumeTabIds((activePrev) => {
+          if ((activePrev[selectedProfileId] ?? null) !== tabId) return activePrev;
+          return { ...activePrev, [selectedProfileId]: fallbackTabs[0]?.id ?? null };
+        });
+        return { ...prev, [selectedProfileId]: fallbackTabs };
+      });
+    },
+    [removeChatSession, selectedProfile, selectedProfileId]
   );
 
   useEffect(() => {
@@ -886,10 +946,10 @@ export default function Page() {
     refreshMetrics,
   });
 
-  const { handleAutofill } = useWorkspaceAutofill({
+  useWorkspaceAutofill({
     api,
     session,
-    selectedProfile,
+    selectedProfile: selectedProfile ?? null,
     isElectron,
     browserSrc,
     webviewRef,
@@ -912,30 +972,44 @@ export default function Page() {
     handleDownloadTailoredPdf,
   } = useWorkspaceResume({
     api,
-    aiProvider: aiProvider as AiProvider,
+    activeResumePreviewHtml,
     baseResumeView,
     bulletCountByCompany,
     companyTitleKeys,
+    createResumePreviewTabId: createTabId,
     jdDraft,
+    profileDisplayName: selectedProfile?.displayName ?? "",
     resumeTemplates,
     resumeTemplatesLoading,
     selectedProfile,
     selectedProfileId,
     selectedTemplate,
-    resumePreviewHtml,
     readWebviewSelection,
-    setChatMessages,
+    setActiveResumeTabId: (value) => {
+      if (!selectedProfileId) return;
+      setProfileActiveResumeTabIds((prev) => ({
+        ...prev,
+        [selectedProfileId]:
+          typeof value === "function" ? value(prev[selectedProfileId] ?? null) : value,
+      }));
+    },
     setJdCaptureError,
     setJdDraft,
     setJdPreviewOpen,
-    setLlmMeta,
-    setLlmRawOutput,
-    setResumePreviewOpen,
+    setResumePreviewTabs: (value) => {
+      if (!selectedProfileId) return;
+      setProfileResumeTabs((prev) => ({
+        ...prev,
+        [selectedProfileId]:
+          typeof value === "function"
+            ? value(prev[selectedProfileId] ?? [buildBaseResumePreviewTab(selectedProfile)])
+            : value,
+      }));
+    },
     setTailorError,
     setTailorLoading,
     setTailorPdfError,
     setTailorPdfLoading,
-    setTailoredResume,
     showError,
     loadResumeTemplates,
   });
@@ -944,10 +1018,8 @@ export default function Page() {
     handleManualJdInputRef.current = () => {
       void handleManualJdInput();
     };
-    handleAutofillRef.current = () => {
-      void handleAutofill();
-    };
-  }, [handleManualJdInput, handleAutofill]);
+    handleAutofillRef.current = () => {};
+  }, [handleManualJdInput]);
 
 
   if (!user) {
@@ -995,13 +1067,11 @@ export default function Page() {
                 profiles={profiles}
                 selectedProfileId={selectedProfileId}
                 onSelectProfile={handleSelectProfile}
-                aiProvider={aiProvider as AiProvider}
-                onAiProviderChange={handleAiProviderChange}
                 onOpenJdModal={handleManualJdInput}
                 tailorLoading={tailorLoading}
-                onAutofill={handleAutofill}
-                autofillDisabled={!session || activeAutofill}
-                autofillActive={activeAutofill}
+                onAutofill={() => {}}
+                autofillDisabled
+                autofillActive={false}
                 showBaseInfo={showBaseInfo}
                 onToggleBaseInfo={() => setShowBaseInfo((v) => !v)}
                 baseDraft={baseDraft}
@@ -1009,6 +1079,35 @@ export default function Page() {
                 baseResume={baseResumeView}
               />
               <WorkspaceBrowser
+                selectedProfile={selectedProfile}
+                resumeTabs={resumePreviewTabs}
+                activeResumeTab={activeResumeTab}
+                activeResumeTabId={activeResumeTabId}
+                onSelectResumeTab={handleSelectResumeTab}
+                onCloseResumeTab={handleCloseResumeTab}
+                onDownloadPdf={handleDownloadTailoredPdf}
+                onRegenerate={handleRegenerateResume}
+                onReselectJd={handleManualJdInput}
+                templateName={selectedTemplate?.name || selectedProfile?.resumeTemplateName || ""}
+                templateLoading={resumeTemplatesLoading}
+                templateError={templateStatusError}
+                templateAssigned={Boolean(selectedProfile?.resumeTemplateId)}
+                tailorLoading={tailorLoading}
+                tailorError={tailorError}
+                tailorPdfLoading={tailorPdfLoading}
+                tailorPdfError={tailorPdfError}
+                activeResumePreviewHtml={activeResumePreviewHtml}
+                activeResumePreviewDoc={activeResumePreviewDoc}
+                jdDraft={jdDraft}
+                llmRawOutput={activeResumeLlmRawOutput}
+                llmMeta={activeResumeLlmMeta}
+                chatMessages={chatMessages}
+                chatInput={chatInput}
+                onChatInputChange={setChatInput}
+                chatLoading={chatLoading}
+                onSendChatMessage={handleSendChatMessage}
+                chatMessagesEndRef={chatMessagesEndRef}
+                chatInputRef={chatInputRef}
                 onGoBack={handleGoBack}
                 onGoForward={handleGoForward}
                 onRefresh={handleRefresh}
@@ -1052,46 +1151,11 @@ export default function Page() {
           jdDraft={jdDraft}
           onJdDraftChange={setJdDraft}
           jdCaptureError={jdCaptureError}
-          companyTitleKeys={companyTitleKeys}
+          experienceLabels={workExperienceLabels}
           baseResumeView={baseResumeView}
           bulletCountByCompany={bulletCountByCompany}
           onBulletCountChange={setBulletCountByCompany}
           tailorLoading={tailorLoading}
-        />
-        <ResumePreviewModal
-          open={resumePreviewOpen}
-          onClose={() => setResumePreviewOpen(false)}
-          onDownloadPdf={handleDownloadTailoredPdf}
-          onRegenerate={handleRegenerateResume}
-          onReselectJd={handleManualJdInput}
-          templateName={selectedTemplate?.name || selectedProfile?.resumeTemplateName || ""}
-          templateLoading={resumeTemplatesLoading}
-          templateError={templateStatusError}
-          templateAssigned={Boolean(selectedProfile?.resumeTemplateId)}
-          selectedProfile={selectedProfile}
-          tailorLoading={tailorLoading}
-          tailorError={tailorError}
-          tailorPdfLoading={tailorPdfLoading}
-          tailorPdfError={tailorPdfError}
-          resumePreviewHtml={resumePreviewHtml}
-          resumePreviewDoc={resumePreviewDoc}
-          jdDraft={jdDraft}
-          llmRawOutput={llmRawOutput}
-          llmMeta={llmMeta}
-        />
-        <ChatWidget
-          open={chatModalOpen}
-          onOpen={handleOpenChatModal}
-          onClose={() => setChatModalOpen(false)}
-          chatProvider={chatProvider}
-          onChatProviderChange={setChatProvider}
-          chatMessages={chatMessages}
-          chatInput={chatInput}
-          onChatInputChange={setChatInput}
-          chatLoading={chatLoading}
-          onSendMessage={handleSendChatMessage}
-          chatMessagesEndRef={chatMessagesEndRef}
-          chatInputRef={chatInputRef}
         />
       </main>
     </>

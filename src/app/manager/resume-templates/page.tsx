@@ -898,7 +898,7 @@ function cleanString(value: unknown): string {
 }
 
 function buildWorkExperienceHtml(items?: BaseResume["workExperience"]) {
-  const list = items ?? [];
+  const list = (items ?? []).filter(hasWorkExperience);
   if (!list.length) return "";
   return list
     .map((item) => {
@@ -927,7 +927,7 @@ function buildWorkExperienceHtml(items?: BaseResume["workExperience"]) {
 }
 
 function buildEducationHtml(items?: BaseResume["education"]) {
-  const list = items ?? [];
+  const list = (items ?? []).filter(hasEducationEntry);
   if (!list.length) return "";
   return list
     .map((item) => {
@@ -946,14 +946,44 @@ function buildEducationHtml(items?: BaseResume["education"]) {
     .join("");
 }
 
+function hasWorkExperience(item: NonNullable<BaseResume["workExperience"]>[number]) {
+  if (!item) return false;
+  const fields = [
+    cleanString(item.companyTitle),
+    cleanString(item.roleTitle),
+    cleanString(item.employmentType),
+    cleanString(item.location),
+    cleanString(item.startDate),
+    cleanString(item.endDate),
+  ];
+  if (fields.some(Boolean)) return true;
+  return (item.bullets ?? []).some((bullet) => cleanString(bullet));
+}
+
+function hasEducationEntry(item: NonNullable<BaseResume["education"]>[number]) {
+  if (!item) return false;
+  const fields = [
+    cleanString(item.institution),
+    cleanString(item.degree),
+    cleanString(item.field),
+    cleanString(item.date),
+  ];
+  if (fields.some(Boolean)) return true;
+  return (item.coursework ?? []).some((course) => cleanString(course));
+}
+
 function buildTemplateData(resume: BaseResume) {
   const profile = resume.Profile ?? {};
   const summary = resume.summary ?? {};
   const skills = resume.skills ?? {};
   const contact = profile.contact ?? {};
+  const summaryText = cleanString(summary.text);
+  const filteredWorkExperience = (resume.workExperience ?? []).filter(hasWorkExperience);
+  const filteredEducation = (resume.education ?? []).filter(hasEducationEntry);
+  const skillValues = (skills.raw ?? []).map((item) => cleanString(item)).filter(Boolean);
   
   return {
-    // Top-level access
+    ...resume,
     profile: {
       name: profile.name || "",
       headline: profile.headline || "",
@@ -975,10 +1005,14 @@ function buildTemplateData(resume: BaseResume) {
         linkedin: contact.linkedin || "",
       },
     },
-    summary: summary.text || "",
-    skills: (skills.raw ?? []).join(", "),
-    work_experience: safeHtml(buildWorkExperienceHtml(resume.workExperience)),
-    education: safeHtml(buildEducationHtml(resume.education)),
+    summary,
+    skills,
+    hasSummary: Boolean(summaryText),
+    hasWorkExperience: filteredWorkExperience.length > 0,
+    hasEducation: filteredEducation.length > 0,
+    hasSkills: skillValues.length > 0,
+    work_experience: safeHtml(buildWorkExperienceHtml(filteredWorkExperience)),
+    education: safeHtml(buildEducationHtml(filteredEducation)),
   };
 }
 

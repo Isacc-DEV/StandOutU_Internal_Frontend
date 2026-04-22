@@ -4,7 +4,9 @@ import type {
   WorkExperience,
   EducationEntry,
   TailorResumeResponse,
+  TailorResumeUpdates,
   BulletAugmentation,
+  ExperienceUpdates,
   CompanyBulletMap,
 } from "@/app/workspace/types";
 
@@ -208,7 +210,7 @@ function extractJsonPayload(input: string) {
 }
 
 export function extractTailorPayload(response: TailorResumeResponse) {
-  const parsed = response.parsed ?? extractJsonPayload(response.content ?? "");
+  const parsed = response.updates ?? response.parsed ?? extractJsonPayload(response.content ?? "");
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   return parsed as Record<string, unknown>;
 }
@@ -254,6 +256,87 @@ export function normalizeResumePatch(patch: Record<string, unknown>) {
   return next;
 }
 
+export function isTailorResumeUpdates(
+  value: Record<string, unknown>
+): value is TailorResumeUpdates {
+  return (
+    typeof value.headline === "string" ||
+    typeof value.summary === "string" ||
+    Array.isArray(value.bullets)
+  );
+}
+
+export function applyTailorResumeUpdates(
+  base: BaseResume,
+  updates: TailorResumeUpdates
+): BaseResume {
+  const normalized = normalizeBaseResume(base);
+  const nextWorkExperience = (normalized.workExperience ?? []).map((item) => ({
+    ...item,
+    bullets: Array.isArray(item.bullets) ? [...item.bullets] : [],
+  }));
+
+  const nextResume: BaseResume = {
+    ...normalized,
+    Profile: {
+      ...(normalized.Profile ?? {}),
+      headline:
+        typeof updates.headline === "string" ? cleanString(updates.headline) : normalized.Profile?.headline,
+    },
+    summary: {
+      text:
+        typeof updates.summary === "string" ? cleanString(updates.summary) : cleanString(normalized.summary?.text),
+    },
+    workExperience: nextWorkExperience,
+  };
+
+  if (!Array.isArray(updates.bullets)) {
+    return nextResume;
+  }
+
+  updates.bullets.forEach((group) => {
+    const rawCompanyIndex = group?.company_index;
+    const companyIndex =
+      typeof rawCompanyIndex === "number" ? rawCompanyIndex : Number(rawCompanyIndex);
+    if (
+      !Number.isFinite(companyIndex) ||
+      companyIndex < 0 ||
+      companyIndex >= nextWorkExperience.length
+    ) {
+      return;
+    }
+
+    const company = nextWorkExperience[companyIndex] ?? getEmptyWorkExperience();
+    const bullets = Array.isArray(company.bullets) ? [...company.bullets] : [];
+    if (!Array.isArray(group?.bullets)) {
+      nextWorkExperience[companyIndex] = { ...company, bullets };
+      return;
+    }
+
+    group.bullets.forEach((bulletUpdate) => {
+      const text = cleanString(bulletUpdate?.text);
+      const type = cleanString(bulletUpdate?.type).toLowerCase();
+      if (!text || !type) return;
+      if (type === "new") {
+        bullets.push(text);
+        return;
+      }
+      if (type === "updated") {
+        const rawOriginalIndex = bulletUpdate?.original_index;
+        const originalIndex =
+          typeof rawOriginalIndex === "number" ? rawOriginalIndex : Number(rawOriginalIndex);
+        if (Number.isFinite(originalIndex) && originalIndex >= 0 && originalIndex < bullets.length) {
+          bullets[originalIndex] = text;
+        }
+      }
+    });
+
+    nextWorkExperience[companyIndex] = { ...company, bullets };
+  });
+
+  return nextResume;
+}
+
 export function isBulletAugmentation(
   value: Record<string, unknown>
 ): value is BulletAugmentation {
@@ -264,11 +347,18 @@ export function isCompanyBulletMap(
   value: Record<string, unknown>
 ): value is CompanyBulletMap {
   if (isBulletAugmentation(value)) return false;
+  if (isExperienceUpdates(value)) return false;
   const entries = Object.entries(value);
   if (!entries.length) return false;
   const hasArray = entries.some(([, v]) => Array.isArray(v));
   if (!hasArray) return false;
   return entries.every(([, v]) => Array.isArray(v) && v.every((item) => typeof item === "string"));
+}
+
+export function isExperienceUpdates(
+  value: Record<string, unknown>
+): value is ExperienceUpdates {
+  return Array.isArray(value.experience_updates);
 }
 
 function normalizeBulletList(value?: string[]) {
@@ -318,7 +408,8 @@ export function applyBulletAugmentation(
 export function buildPromptCompanyTitleKey(item: WorkExperience) {
   const source = item as Record<string, unknown>;
   const explicit = cleanString(
-    (source.company_title ??
+    (source.experience_key ??
+      source.company_title ??
       source.companyTitle ??
       source.companyTitleText ??
       source.company_title_text ??
@@ -339,6 +430,67 @@ export function buildPromptCompanyTitleKey(item: WorkExperience) {
   );
   if (title && company) return `${title} - ${company}`;
   return title || company || "";
+}
+
+function appendPromptKeyOccurrence(key: string, occurrence: number) {
+  if (occurrence <= 1) return key;
+  return `${key} (${occurrence})`;
+}
+
+export function buildPromptCompanyTitleKeys(items: WorkExperience[] = []) {
+  const occurrences = new Map<string, number>();
+  return items.map((item) => {
+    const baseKey = buildPromptCompanyTitleKey(item);
+    if (!baseKey) return "";
+    const nextOccurrence = (occurrences.get(baseKey) ?? 0) + 1;
+    occurrences.set(baseKey, nextOccurrence);
+    return appendPromptKeyOccurrence(baseKey, nextOccurrence);
+  });
+}
+
+export function buildTailorBaseResume(base: BaseResume): BaseResume {
+  const normalized = normalizeBaseResume(base);
+  const promptKeys = buildPromptCompanyTitleKeys(normalized.workExperience ?? []);
+  const workExperience = (normalized.workExperience ?? []).map((item, index) => {
+    const promptKey = promptKeys[index];
+    return {
+      ...item,
+      ...(promptKey ? ({ experience_key: promptKey } as Record<string, string>) : {}),
+      experience_index: index,
+    };
+  });
+  return {
+    ...normalized,
+    workExperience,
+  };
+}
+
+export function mapBulletAugmentationToExperienceUpdates(
+  augmentation: BulletAugmentation
+): ExperienceUpdates {
+  const updates: NonNullable<ExperienceUpdates["experience_updates"]> = [];
+  const appendAt = (index: number, bullets?: string[]) => {
+    if (!Number.isFinite(index) || index < 0) return;
+    const extras = normalizeBulletList(bullets);
+    if (!extras.length) return;
+    updates.push({
+      experience_index: index,
+      bullets: extras,
+    });
+  };
+
+  appendAt(0, augmentation.first_company);
+  appendAt(1, augmentation.second_company);
+
+  if (Array.isArray(augmentation.other_companies)) {
+    augmentation.other_companies.forEach((entry) => {
+      const rawIndex = entry?.experience_index;
+      const index = typeof rawIndex === "number" ? rawIndex : Number(rawIndex);
+      appendAt(index, entry?.bullets);
+    });
+  }
+
+  return { experience_updates: updates };
 }
 
 function normalizeKeyForMatch(key: string): string {
@@ -370,19 +522,21 @@ export function buildBulletCountDefaults(
   }
 
   keys.forEach((key, index) => {
-    if (!key) return;
+    const indexKey = String(index);
     const normalizedKey = normalizeKeyForMatch(key);
-    // Try exact match first
-    if (profileDefaults && typeof profileDefaults[key] === "number") {
-      result[key] = profileDefaults[key];
+    // Prefer index-based defaults when present.
+    if (profileDefaults && typeof profileDefaults[indexKey] === "number") {
+      result[indexKey] = profileDefaults[indexKey];
     }
-    // Try normalized match
+    // Fall back to existing title-based defaults for compatibility.
+    else if (profileDefaults && typeof profileDefaults[key] === "number") {
+      result[indexKey] = profileDefaults[key];
+    }
     else if (normalizedDefaults.has(normalizedKey)) {
-      result[key] = normalizedDefaults.get(normalizedKey)!.value;
+      result[indexKey] = normalizedDefaults.get(normalizedKey)!.value;
     }
-    // Fall back to static defaults
     else {
-      result[key] = index === 0 ? 3 : 1;
+      result[indexKey] = index === 0 ? 3 : 1;
     }
   });
   return result;
@@ -393,13 +547,38 @@ export function buildBulletCountByCompanyPayload(
   counts: Record<string, number>
 ) {
   const result: Record<string, number> = {};
-  keys.forEach((key, index) => {
-    if (!key) return;
-    const raw = counts[key];
+  keys.forEach((_, index) => {
+    const indexKey = String(index);
+    const raw = counts[indexKey];
     const value = typeof raw === "number" && Number.isFinite(raw) ? raw : index === 0 ? 3 : 1;
-    result[key] = value;
+    result[indexKey] = value;
   });
   return result;
+}
+
+function buildExperienceKeyIndexLookup(items: WorkExperience[]) {
+  const promptKeys = buildPromptCompanyTitleKeys(items);
+  const keyToIndex = new Map<string, number>();
+  items.forEach((item, index) => {
+    buildExperienceKeyAliases(item).forEach((key) => {
+      if (key && !keyToIndex.has(key)) {
+        keyToIndex.set(key, index);
+      }
+      const normalizedKey = normalizeCompanyKey(key);
+      if (normalizedKey && !keyToIndex.has(normalizedKey)) {
+        keyToIndex.set(normalizedKey, index);
+      }
+    });
+    const promptKey = promptKeys[index];
+    if (promptKey && !keyToIndex.has(promptKey)) {
+      keyToIndex.set(promptKey, index);
+    }
+    const normalizedPromptKey = normalizeCompanyKey(promptKey);
+    if (normalizedPromptKey && !keyToIndex.has(normalizedPromptKey)) {
+      keyToIndex.set(normalizedPromptKey, index);
+    }
+  });
+  return keyToIndex;
 }
 
 function buildExperienceKey(item: WorkExperience) {
@@ -422,6 +601,8 @@ function buildExperienceKeyAliases(item: WorkExperience) {
   const aliases = new Set<string>();
   const key = buildExperienceKey(item);
   if (key) aliases.add(key);
+  const promptKey = buildPromptCompanyTitleKey(item);
+  if (promptKey) aliases.add(promptKey);
   const title = cleanString(item.roleTitle);
   const company = cleanString(item.companyTitle);
   if (title) aliases.add(title);
@@ -431,37 +612,86 @@ function buildExperienceKeyAliases(item: WorkExperience) {
 }
 
 export function applyCompanyBulletMap(base: BaseResume, map: CompanyBulletMap): BaseResume {
+  const updates = mapCompanyBulletMapToExperienceUpdates(base, map);
+  return applyExperienceUpdates(base, updates);
+}
+
+export function mapCompanyBulletMapToExperienceUpdates(
+  base: BaseResume,
+  map: CompanyBulletMap
+): ExperienceUpdates {
   const normalized = normalizeBaseResume(base);
-  const workExperience = (normalized.workExperience ?? []).map((item) => ({
-    ...item,
-    bullets: Array.isArray(item.bullets) ? [...item.bullets] : [],
-  }));
-  const keyToIndex = new Map<string, number>();
-  workExperience.forEach((item, index) => {
-    buildExperienceKeyAliases(item).forEach((key) => {
-      if (key && !keyToIndex.has(key)) {
-        keyToIndex.set(key, index);
-      }
-      const normalizedKey = normalizeCompanyKey(key);
-      if (normalizedKey && !keyToIndex.has(normalizedKey)) {
-        keyToIndex.set(normalizedKey, index);
-      }
-    });
-  });
+  const workExperience = normalized.workExperience ?? [];
+  const keyToIndex = buildExperienceKeyIndexLookup(workExperience);
+  const updates: NonNullable<ExperienceUpdates["experience_updates"]> = [];
   Object.entries(map).forEach(([key, bullets]) => {
     const cleanKey = cleanString(key);
     if (!cleanKey) return;
     const normalizedKey = normalizeCompanyKey(cleanKey);
     const index = keyToIndex.get(cleanKey) ?? keyToIndex.get(normalizedKey);
     if (index === undefined) return;
-    const existing = normalizeBulletList(workExperience[index].bullets);
     const extras = normalizeBulletList(bullets);
     if (!extras.length) return;
+    updates.push({
+      experience_index: index,
+      bullets: extras,
+    });
+  });
+  return { experience_updates: updates };
+}
+
+export function normalizeExperienceUpdates(
+  updates: ExperienceUpdates,
+  requestedCounts?: Record<string, number>
+): ExperienceUpdates {
+  const grouped = new Map<number, string[]>();
+  (updates.experience_updates ?? []).forEach((entry) => {
+    const rawIndex = entry?.experience_index;
+    const index = typeof rawIndex === "number" ? rawIndex : Number(rawIndex);
+    if (!Number.isFinite(index) || index < 0) return;
+    const extras = normalizeBulletList(entry?.bullets);
+    if (!extras.length) return;
+    grouped.set(index, [...(grouped.get(index) ?? []), ...extras]);
+  });
+
+  const normalized = Array.from(grouped.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([index, bullets]) => {
+      const requested = requestedCounts?.[String(index)];
+      const targetCount =
+        typeof requested === "number" && Number.isFinite(requested)
+          ? Math.max(0, Math.trunc(requested))
+          : bullets.length;
+      return {
+        experience_index: index,
+        bullets: bullets.slice(0, targetCount),
+      };
+    })
+    .filter((entry) => (entry.bullets?.length ?? 0) > 0);
+
+  return { experience_updates: normalized };
+}
+
+export function applyExperienceUpdates(base: BaseResume, updates: ExperienceUpdates): BaseResume {
+  const normalized = normalizeBaseResume(base);
+  const workExperience = (normalized.workExperience ?? []).map((item) => ({
+    ...item,
+    bullets: Array.isArray(item.bullets) ? [...item.bullets] : [],
+  }));
+
+  (updates.experience_updates ?? []).forEach((entry) => {
+    const rawIndex = entry?.experience_index;
+    const index = typeof rawIndex === "number" ? rawIndex : Number(rawIndex);
+    if (!Number.isFinite(index) || index < 0 || index >= workExperience.length) return;
+    const extras = normalizeBulletList(entry?.bullets);
+    if (!extras.length) return;
+    const existing = normalizeBulletList(workExperience[index].bullets);
     workExperience[index] = {
       ...workExperience[index],
       bullets: [...extras, ...existing],
     };
   });
+
   return { ...normalized, workExperience };
 }
 

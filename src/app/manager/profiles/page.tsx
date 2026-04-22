@@ -1465,7 +1465,7 @@ export default function ManagerProfilesPage() {
                       </div>
                       {(() => {
                         const workExp = baseResumeDraft.workExperience ?? [];
-                        const companyKeys = workExp.map(buildCompanyTitleKey).filter(Boolean);
+                        const companyKeys = buildCompanyTitleKeys(workExp).filter(Boolean);
                         if (companyKeys.length === 0) {
                           return (
                             <div className="mt-3 text-sm text-slate-500">
@@ -1475,8 +1475,8 @@ export default function ManagerProfilesPage() {
                         }
                         return (
                           <div className="mt-3 space-y-3">
-                            {companyKeys.map((key) => (
-                              <div key={key} className="flex items-center gap-3">
+                            {companyKeys.map((key, index) => (
+                              <div key={`${key}-${index}`} className="flex items-center gap-3">
                                 <label className="flex-1 text-sm text-slate-700">{key}</label>
                                 {baseBulletCountsEdit ? (
                                   <input
@@ -3179,6 +3179,17 @@ function buildCompanyTitleKey(item: WorkExperience): string {
   return title || company || "";
 }
 
+function buildCompanyTitleKeys(items: WorkExperience[]): string[] {
+  const occurrences = new Map<string, number>();
+  return items.map((item) => {
+    const baseKey = buildCompanyTitleKey(item);
+    if (!baseKey) return "";
+    const nextOccurrence = (occurrences.get(baseKey) ?? 0) + 1;
+    occurrences.set(baseKey, nextOccurrence);
+    return nextOccurrence === 1 ? baseKey : `${baseKey} (${nextOccurrence})`;
+  });
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -3440,13 +3451,22 @@ function buildTemplateData(resume: BaseResume) {
   const profile = resume.Profile ?? {};
   const summary = resume.summary ?? {};
   const skills = resume.skills ?? {};
+  const summaryText = cleanString(summary.text);
+  const filteredWorkExperience = (resume.workExperience ?? []).filter(hasWorkExperience);
+  const filteredEducation = (resume.education ?? []).filter(hasEducationEntry);
+  const skillValues = (skills.raw ?? []).map((item) => cleanString(item)).filter(Boolean);
   return {
     ...resume,
     Profile: profile,
     profile,
     summary,
     skills,
-    work_experience: safeHtml(buildWorkExperienceHtml(resume.workExperience)),
+    hasSummary: Boolean(summaryText),
+    hasWorkExperience: filteredWorkExperience.length > 0,
+    hasEducation: filteredEducation.length > 0,
+    hasSkills: skillValues.length > 0,
+    work_experience: safeHtml(buildWorkExperienceHtml(filteredWorkExperience)),
+    education: safeHtml(buildEducationHtml(filteredEducation)),
   };
 }
 
@@ -3680,7 +3700,7 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-function buildResumePdfName(profileName?: string) {
+function buildResumePdfName(profileName?: string, _templateName?: string) {
   const shortId = Date.now().toString(36);
   const core = profileName ? profileName : "resume";
   const base = core || "resume";

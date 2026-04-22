@@ -10,7 +10,7 @@ type JdPreviewModalProps = {
   jdDraft: string;
   onJdDraftChange: (value: string) => void;
   jdCaptureError: string;
-  companyTitleKeys: string[];
+  experienceLabels: string[];
   baseResumeView: BaseResume;
   bulletCountByCompany: Record<string, number>;
   onBulletCountChange: Dispatch<SetStateAction<Record<string, number>>>;
@@ -25,7 +25,7 @@ export default function JdPreviewModal({
   jdDraft,
   onJdDraftChange,
   jdCaptureError,
-  companyTitleKeys,
+  experienceLabels,
   baseResumeView,
   bulletCountByCompany,
   onBulletCountChange,
@@ -81,23 +81,24 @@ export default function JdPreviewModal({
               <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
                 Bullet counts
               </p>
-              <p className="text-xs text-slate-500">Company Title - Role Number</p>
+              <p className="text-xs text-slate-500">Experience row and desired new bullet count</p>
             </div>
             <div className="mt-3 space-y-2">
-              {companyTitleKeys.length ? (
-                companyTitleKeys.map((companyTitle, index) => {
+              {experienceLabels.length ? (
+                experienceLabels.map((experienceLabel, index) => {
                   const roleLabel = (baseResumeView.workExperience?.[index]?.roleTitle ?? "").trim();
-                  const displayLabel = [companyTitle, roleLabel || `Role ${index + 1}`]
+                  const displayLabel = [experienceLabel, roleLabel || `Role ${index + 1}`]
                     .filter(Boolean)
                     .join(" - ");
                   const fallbackCount = index === 0 ? 3 : 1;
+                  const countKey = String(index);
                   const currentValue =
-                    typeof bulletCountByCompany[companyTitle] === "number"
-                      ? bulletCountByCompany[companyTitle]
+                    typeof bulletCountByCompany[countKey] === "number"
+                      ? bulletCountByCompany[countKey]
                       : fallbackCount;
                   return (
                     <label
-                      key={`${companyTitle}-${index}`}
+                      key={`${experienceLabel}-${index}`}
                       className="flex items-center justify-between gap-3 text-xs text-slate-700"
                     >
                       <span className="flex-1 truncate">{displayLabel}</span>
@@ -114,7 +115,7 @@ export default function JdPreviewModal({
                             : 0;
                           onBulletCountChange((prev) => ({
                             ...prev,
-                            [companyTitle]: safeValue,
+                            [countKey]: safeValue,
                           }));
                         }}
                         className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 shadow-sm outline-none focus:ring-1 focus:ring-slate-300"

@@ -97,17 +97,66 @@ export type ResumeTemplate = {
   updatedAt: string;
 };
 
+export type ResumePreviewLlmMeta = {
+  provider?: string;
+  model?: string;
+};
+
+export type ResumePreviewTab = {
+  id: string;
+  label: string;
+  kind: "base" | "generated";
+  profileId?: string;
+  resume: BaseResume;
+  jd?: string;
+  llmRawOutput?: string;
+  llmMeta?: ResumePreviewLlmMeta | null;
+};
+
+export type WorkspaceChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type WorkspaceAnswerSession = {
+  messages: WorkspaceChatMessage[];
+  draftInput: string;
+  loading: boolean;
+};
+
 export type TailorResumeResponse = {
   content?: string;
   parsed?: unknown;
+  updates?: unknown;
+  resume?: BaseResume | Record<string, unknown>;
   provider?: string;
   model?: string;
+};
+
+export type TailorResumeUpdates = {
+  headline?: string;
+  summary?: string;
+  bullets?: Array<{
+    company_index?: number | string;
+    bullets?: Array<{
+      text?: string;
+      type?: "new" | "updated" | string;
+      original_index?: number | string;
+    }>;
+  }>;
 };
 
 export type BulletAugmentation = {
   first_company?: string[];
   second_company?: string[];
   other_companies?: Array<{
+    experience_index?: number | string;
+    bullets?: string[];
+  }>;
+};
+
+export type ExperienceUpdates = {
+  experience_updates?: Array<{
     experience_index?: number | string;
     bullets?: string[];
   }>;

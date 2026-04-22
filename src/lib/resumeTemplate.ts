@@ -21,13 +21,22 @@ function buildTemplateData(resume: BaseResume) {
   const profile = resume.Profile ?? {};
   const summary = resume.summary ?? {};
   const skills = resume.skills ?? {};
+  const summaryText = cleanString(summary.text);
+  const filteredWorkExperience = (resume.workExperience ?? []).filter(hasWorkExperience);
+  const filteredEducation = (resume.education ?? []).filter(hasEducationEntry);
+  const skillValues = (skills.raw ?? []).map((item) => cleanString(item)).filter(Boolean);
   return {
     ...resume,
     Profile: profile,
     profile,
     summary,
     skills,
-    work_experience: safeHtml(buildWorkExperienceHtml(resume.workExperience)),
+    hasSummary: Boolean(summaryText),
+    hasWorkExperience: filteredWorkExperience.length > 0,
+    hasEducation: filteredEducation.length > 0,
+    hasSkills: skillValues.length > 0,
+    work_experience: safeHtml(buildWorkExperienceHtml(filteredWorkExperience)),
+    education: safeHtml(buildEducationHtml(filteredEducation)),
   };
 }
 

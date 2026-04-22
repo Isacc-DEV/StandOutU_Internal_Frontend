@@ -5,8 +5,6 @@ type ChatWidgetProps = {
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
-  chatProvider: "HUGGINGFACE" | "OPENAI" | "GEMINI";
-  onChatProviderChange: (value: "HUGGINGFACE" | "OPENAI" | "GEMINI") => void;
   chatMessages: Array<{ role: "user" | "assistant"; content: string }>;
   chatInput: string;
   onChatInputChange: (value: string) => void;
@@ -20,8 +18,6 @@ export default function ChatWidget({
   open,
   onOpen,
   onClose,
-  chatProvider,
-  onChatProviderChange,
   chatMessages,
   chatInput,
   onChatInputChange,
@@ -53,17 +49,9 @@ export default function ChatWidget({
               <h2 className="text-xl font-semibold text-slate-900">AI Assistant</h2>
             </div>
             <div className="flex items-center gap-3">
-              <select
-                value={chatProvider}
-                onChange={(e) =>
-                  onChatProviderChange(e.target.value as "OPENAI" | "HUGGINGFACE" | "GEMINI")
-                }
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 outline-none ring-1 ring-transparent transition focus:border-indigo-500 focus:ring-indigo-500"
-              >
-                <option value="HUGGINGFACE">Hugging Face</option>
-                <option value="OPENAI">OpenAI</option>
-                <option value="GEMINI">Gemini</option>
-              </select>
+              <span className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700">
+                OpenAI
+              </span>
               <button
                 type="button"
                 onClick={onClose}

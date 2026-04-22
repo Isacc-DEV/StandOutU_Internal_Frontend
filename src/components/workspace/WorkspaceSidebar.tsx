@@ -6,8 +6,6 @@ type WorkspaceSidebarProps = {
   profiles: Profile[];
   selectedProfileId: string;
   onSelectProfile: (id: string) => void;
-  aiProvider: "HUGGINGFACE" | "OPENAI" | "GEMINI";
-  onAiProviderChange: (value: "HUGGINGFACE" | "OPENAI" | "GEMINI") => void;
   onOpenJdModal: () => void;
   tailorLoading: boolean;
   onAutofill: () => void;
@@ -80,8 +78,6 @@ export default function WorkspaceSidebar({
   profiles,
   selectedProfileId,
   onSelectProfile,
-  aiProvider,
-  onAiProviderChange,
   onOpenJdModal,
   tailorLoading,
   onAutofill,
@@ -152,18 +148,9 @@ export default function WorkspaceSidebar({
         <div className="rounded-xl border border-slate-700 p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[10px] uppercase tracking-[0.3em] text-slate-200">Service</p>
-
-            <select
-              value={aiProvider}
-              onChange={(event) =>
-                onAiProviderChange(event.target.value as "OPENAI" | "HUGGINGFACE" | "GEMINI")
-              }
-              className="w-full rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-1 ring-transparent transition focus:border-slate-500 focus:ring-slate-500"
-            >
-              <option value="HUGGINGFACE">Hugging Face</option>
-              <option value="OPENAI">OpenAI</option>
-              <option value="GEMINI">Gemini</option>
-            </select>
+            <span className="inline-flex items-center rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100">
+              OpenAI
+            </span>
           </div>
           <div className="mt-4 relative">
             <button

@@ -1,81 +1,95 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { API_BASE } from "@/lib/api";
-import type { BaseResume, Profile, ResumeTemplate, TailorResumeResponse } from "../app/workspace/types";
+import type {
+  BaseResume,
+  Profile,
+  ResumePreviewTab,
+  ResumeTemplate,
+  TailorResumeResponse,
+} from "../app/workspace/types";
 import {
-  applyBulletAugmentation,
-  applyCompanyBulletMap,
+  applyTailorResumeUpdates,
+  applyExperienceUpdates,
   buildBulletCountByCompanyPayload,
   buildResumePdfName,
+  buildTailorBaseResume,
   extractTailorPayload,
   getPdfFilenameFromHeader,
   isBulletAugmentation,
+  isExperienceUpdates,
   isCompanyBulletMap,
+  isTailorResumeUpdates,
+  mapBulletAugmentationToExperienceUpdates,
+  mapCompanyBulletMapToExperienceUpdates,
   mergeResumeData,
   normalizeBaseResume,
+  normalizeExperienceUpdates,
   normalizeResumePatch,
   selectResumePatch,
 } from "@/lib/resume";
 
 type UseWorkspaceResumeOptions = {
   api: (path: string, init?: RequestInit) => Promise<unknown>;
-  aiProvider: "HUGGINGFACE" | "OPENAI" | "GEMINI";
+  activeResumePreviewHtml: string;
   baseResumeView: BaseResume;
   bulletCountByCompany: Record<string, number>;
   companyTitleKeys: string[];
+  createResumePreviewTabId: () => string;
   jdDraft: string;
+  profileDisplayName: string;
   resumeTemplates: ResumeTemplate[];
   resumeTemplatesLoading: boolean;
   selectedProfile?: Profile;
   selectedProfileId: string;
   selectedTemplate?: ResumeTemplate;
-  resumePreviewHtml: string;
   readWebviewSelection: () => Promise<string>;
-  setChatMessages: Dispatch<SetStateAction<Array<{ role: "user" | "assistant"; content: string }>>>;
+  setActiveResumeTabId: Dispatch<SetStateAction<string | null>>;
   setJdCaptureError: (value: string) => void;
   setJdDraft: (value: string) => void;
   setJdPreviewOpen: (value: boolean) => void;
-  setLlmMeta: (value: { provider?: string; model?: string } | null) => void;
-  setLlmRawOutput: (value: string) => void;
-  setResumePreviewOpen: (value: boolean) => void;
+  setResumePreviewTabs: Dispatch<SetStateAction<ResumePreviewTab[]>>;
   setTailorError: (value: string) => void;
   setTailorLoading: (value: boolean) => void;
   setTailorPdfError: (value: string) => void;
   setTailorPdfLoading: (value: boolean) => void;
-  setTailoredResume: (value: BaseResume | null) => void;
   showError: (message: string) => void;
   loadResumeTemplates: () => Promise<void>;
 };
 
 export function useWorkspaceResume({
   api,
-  aiProvider,
+  activeResumePreviewHtml,
   baseResumeView,
   bulletCountByCompany,
   companyTitleKeys,
+  createResumePreviewTabId,
   jdDraft,
+  profileDisplayName,
   resumeTemplates,
   resumeTemplatesLoading,
   selectedProfile,
   selectedProfileId,
   selectedTemplate,
-  resumePreviewHtml,
   readWebviewSelection,
-  setChatMessages,
+  setActiveResumeTabId,
   setJdCaptureError,
   setJdDraft,
   setJdPreviewOpen,
-  setLlmMeta,
-  setLlmRawOutput,
-  setResumePreviewOpen,
+  setResumePreviewTabs,
   setTailorError,
   setTailorLoading,
   setTailorPdfError,
   setTailorPdfLoading,
-  setTailoredResume,
   showError,
   loadResumeTemplates,
 }: UseWorkspaceResumeOptions) {
+  const selectedProfileIdRef = useRef(selectedProfileId);
+
+  useEffect(() => {
+    selectedProfileIdRef.current = selectedProfileId;
+  }, [selectedProfileId]);
+
   const requireProfileTemplate = useCallback((): string | null => {
     if (!selectedProfile?.resumeTemplateId) {
       showError("Assign a resume template to this profile first.");
@@ -83,6 +97,101 @@ export function useWorkspaceResume({
     }
     return selectedProfile.resumeTemplateId;
   }, [selectedProfile?.resumeTemplateId, showError]);
+
+  const appendGeneratedResumeTab = useCallback(
+    (
+      resume: BaseResume,
+      sourceJd: string,
+      llmRawOutput: string,
+      llmMeta: { provider?: string; model?: string }
+    ) => {
+      const nextTabId = createResumePreviewTabId();
+      setResumePreviewTabs((prev) => {
+        const nextIndex = prev.filter((tab) => tab.kind === "generated").length + 1;
+        const nextTab: ResumePreviewTab = {
+          id: nextTabId,
+          label: `${profileDisplayName || "Resume"} ${nextIndex + 1}`,
+          kind: "generated",
+          profileId: selectedProfileIdRef.current,
+          resume,
+          jd: sourceJd,
+          llmRawOutput,
+          llmMeta,
+        };
+        return [...prev, nextTab];
+      });
+      setActiveResumeTabId(nextTabId);
+    },
+    [createResumePreviewTabId, profileDisplayName, setActiveResumeTabId, setResumePreviewTabs]
+  );
+
+  const generateResume = useCallback(
+    async (requestProfileId: string) => {
+      const baseResume = buildTailorBaseResume(baseResumeView);
+      const sourceJd = jdDraft.trim();
+      const baseResumeText = JSON.stringify(baseResume, null, 2);
+      const bulletCountByCompanyPayload = buildBulletCountByCompanyPayload(
+        companyTitleKeys,
+        bulletCountByCompany
+      );
+      const payload: Record<string, unknown> = {
+        jobDescriptionText: sourceJd,
+        baseResume,
+        baseResumeText,
+        bulletCountByCompany: bulletCountByCompanyPayload,
+        provider: "OPENAI",
+      };
+      const response = (await api("/llm/tailor-resume", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })) as TailorResumeResponse;
+      const parsed = extractTailorPayload(response);
+      if (!parsed) {
+        throw new Error("LLM did not return JSON output.");
+      }
+      const directResume =
+        response.resume && typeof response.resume === "object"
+          ? normalizeBaseResume(response.resume as BaseResume)
+          : null;
+      const patchCandidate = selectResumePatch(parsed);
+      const normalizedExperienceUpdates = isExperienceUpdates(patchCandidate)
+        ? normalizeExperienceUpdates(patchCandidate, bulletCountByCompanyPayload)
+        : isCompanyBulletMap(patchCandidate)
+          ? normalizeExperienceUpdates(
+              mapCompanyBulletMapToExperienceUpdates(baseResume, patchCandidate),
+              bulletCountByCompanyPayload
+            )
+          : isBulletAugmentation(patchCandidate)
+            ? normalizeExperienceUpdates(
+                mapBulletAugmentationToExperienceUpdates(patchCandidate),
+                bulletCountByCompanyPayload
+              )
+            : null;
+      const nextResume = directResume
+        ? directResume
+        : normalizedExperienceUpdates
+          ? applyExperienceUpdates(baseResume, normalizedExperienceUpdates)
+          : isTailorResumeUpdates(patchCandidate)
+            ? applyTailorResumeUpdates(baseResume, patchCandidate)
+            : mergeResumeData(baseResume, normalizeResumePatch(patchCandidate));
+      const normalized = normalizeBaseResume(nextResume);
+      if (selectedProfileIdRef.current !== requestProfileId) {
+        return null;
+      }
+      const rawOutput = response.content ?? "";
+      const meta = { provider: response.provider, model: response.model };
+      appendGeneratedResumeTab(normalized, sourceJd, rawOutput, meta);
+      return normalized;
+    },
+    [
+      api,
+      appendGeneratedResumeTab,
+      baseResumeView,
+      bulletCountByCompany,
+      companyTitleKeys,
+      jdDraft,
+    ]
+  );
 
   const handleManualJdInput = useCallback(async () => {
     if (!selectedProfile || !selectedProfileId) {
@@ -128,84 +237,34 @@ export function useWorkspaceResume({
     if (!resumeTemplates.length && !resumeTemplatesLoading) {
       void loadResumeTemplates();
     }
-    setResumePreviewOpen(true);
     setJdPreviewOpen(false);
     setTailorError("");
     setTailorPdfError("");
-    setLlmRawOutput("");
-    setLlmMeta(null);
     setTailorLoading(true);
     try {
-      const baseResume = baseResumeView;
-      const baseResumeText = JSON.stringify(baseResume, null, 2);
-      const bulletCountByCompanyPayload = buildBulletCountByCompanyPayload(
-        companyTitleKeys,
-        bulletCountByCompany
-      );
-      const payload: Record<string, unknown> = {
-        jobDescriptionText: jdDraft.trim(),
-        baseResume,
-        baseResumeText,
-        bulletCountByCompany: bulletCountByCompanyPayload,
-        provider: aiProvider,
-      };
-      const response = (await api("/llm/tailor-resume", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      })) as TailorResumeResponse;
-      setLlmRawOutput(response.content ?? "");
-      setLlmMeta({ provider: response.provider, model: response.model });
-      const parsed = extractTailorPayload(response);
-      if (!parsed) {
-        throw new Error("LLM did not return JSON output.");
-      }
-      const patchCandidate = selectResumePatch(parsed);
-      const nextResume = isBulletAugmentation(patchCandidate)
-        ? applyBulletAugmentation(baseResume, patchCandidate)
-        : isCompanyBulletMap(patchCandidate)
-          ? applyCompanyBulletMap(baseResume, patchCandidate)
-          : mergeResumeData(baseResume, normalizeResumePatch(patchCandidate));
-      const normalized = normalizeBaseResume(nextResume);
-      setTailoredResume(normalized);
-      // Save resume_json and job_description for chat
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("last_resume_json", JSON.stringify(normalized));
-          localStorage.setItem("last_job_description", jdDraft.trim());
-          // Clear chat messages since resume and JD are updated
-          setChatMessages([]);
-        } catch (e) {
-          console.error("Failed to save resume data for chat", e);
-        }
-      }
+      await generateResume(selectedProfileId);
     } catch (err) {
       console.error(err);
       const message = err instanceof Error ? err.message : "Resume generation failed.";
-      setTailorError(message);
+      if (selectedProfileIdRef.current === selectedProfileId) {
+        setTailorError(message);
+      }
     } finally {
       setTailorLoading(false);
     }
   }, [
-    aiProvider,
-    api,
-    baseResumeView,
-    bulletCountByCompany,
-    companyTitleKeys,
+    generateResume,
     jdDraft,
     loadResumeTemplates,
     requireProfileTemplate,
+    selectedProfileId,
     resumeTemplates.length,
     resumeTemplatesLoading,
-    setChatMessages,
     setJdCaptureError,
     setJdPreviewOpen,
-    setLlmMeta,
-    setLlmRawOutput,
-    setResumePreviewOpen,
     setTailorError,
     setTailorLoading,
     setTailorPdfError,
-    setTailoredResume,
   ]);
 
   const handleRegenerateResume = useCallback(async () => {
@@ -227,78 +286,30 @@ export function useWorkspaceResume({
     }
     setTailorError("");
     setTailorPdfError("");
-    setLlmRawOutput("");
-    setLlmMeta(null);
     setTailorLoading(true);
     try {
-      const baseResume = baseResumeView;
-      const baseResumeText = JSON.stringify(baseResume, null, 2);
-      const bulletCountByCompanyPayload = buildBulletCountByCompanyPayload(
-        companyTitleKeys,
-        bulletCountByCompany
-      );
-      const payload: Record<string, unknown> = {
-        jobDescriptionText: jdDraft.trim(),
-        baseResume,
-        baseResumeText,
-        bulletCountByCompany: bulletCountByCompanyPayload,
-        provider: aiProvider,
-      };
-      const response = (await api("/llm/tailor-resume", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      })) as TailorResumeResponse;
-      setLlmRawOutput(response.content ?? "");
-      setLlmMeta({ provider: response.provider, model: response.model });
-      const parsed = extractTailorPayload(response);
-      if (!parsed) {
-        throw new Error("LLM did not return JSON output.");
-      }
-      const patchCandidate = selectResumePatch(parsed);
-      const nextResume = isBulletAugmentation(patchCandidate)
-        ? applyBulletAugmentation(baseResume, patchCandidate)
-        : isCompanyBulletMap(patchCandidate)
-          ? applyCompanyBulletMap(baseResume, patchCandidate)
-          : mergeResumeData(baseResume, normalizeResumePatch(patchCandidate));
-      const normalized = normalizeBaseResume(nextResume);
-      setTailoredResume(normalized);
-      // Save resume_json and job_description for chat
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("last_resume_json", JSON.stringify(normalized));
-          localStorage.setItem("last_job_description", jdDraft.trim());
-          // Clear chat messages since resume and JD are updated
-          setChatMessages([]);
-        } catch (e) {
-          console.error("Failed to save resume data for chat", e);
-        }
-      }
+      await generateResume(selectedProfileId);
     } catch (err) {
       console.error(err);
       const message = err instanceof Error ? err.message : "Resume generation failed.";
-      setTailorError(message);
+      if (selectedProfileIdRef.current === selectedProfileId) {
+        setTailorError(message);
+      }
     } finally {
       setTailorLoading(false);
     }
   }, [
-    aiProvider,
-    api,
-    baseResumeView,
-    bulletCountByCompany,
-    companyTitleKeys,
+    generateResume,
     jdDraft,
     loadResumeTemplates,
     requireProfileTemplate,
     resumeTemplates.length,
     resumeTemplatesLoading,
     selectedProfile,
-    setChatMessages,
-    setLlmMeta,
-    setLlmRawOutput,
+    selectedProfileId,
     setTailorError,
     setTailorLoading,
     setTailorPdfError,
-    setTailoredResume,
   ]);
 
   const handleDownloadTailoredPdf = useCallback(async () => {
@@ -311,7 +322,7 @@ export function useWorkspaceResume({
       setTailorPdfError("Assigned resume template is unavailable. Please ask a manager to set it again.");
       return;
     }
-    if (!resumePreviewHtml.trim()) {
+    if (!activeResumePreviewHtml.trim()) {
       setTailorPdfError("Assign a resume template to this profile first.");
       return;
     }
@@ -327,7 +338,7 @@ export function useWorkspaceResume({
           Authorization: `Bearer ${window.localStorage.getItem("smartwork_token") ?? ""}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ html: resumePreviewHtml, filename: fileName }),
+        body: JSON.stringify({ html: activeResumePreviewHtml, filename: fileName }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -352,8 +363,8 @@ export function useWorkspaceResume({
       setTailorPdfLoading(false);
     }
   }, [
+    activeResumePreviewHtml,
     requireProfileTemplate,
-    resumePreviewHtml,
     selectedProfile?.displayName,
     selectedTemplate,
     setTailorPdfError,

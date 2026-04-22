@@ -25,6 +25,8 @@ export interface AIQuestionResponse {
   selectedIndices?: number[]
 }
 
+const OPENAI_AUTOFILL_MODEL = 'gpt-5.4-mini'
+
 export class DomainQuestionHandler {
   private openaiApiKey: string | null = null
   private answerOverrides: AIQuestionResponse[] | null = null
@@ -174,7 +176,7 @@ export class DomainQuestionHandler {
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: OPENAI_AUTOFILL_MODEL,
           messages: [
             {
               role: 'system',
@@ -186,7 +188,7 @@ export class DomainQuestionHandler {
             }
           ],
           temperature: 0.7,
-          max_tokens: 2000
+          max_completion_tokens: 2000
         })
       })
 

@@ -1,7 +1,5 @@
 import type { User } from "@/app/workspace/types";
 
-export type AiProvider = "HUGGINGFACE" | "OPENAI" | "GEMINI";
-
 type UserSnapshotCache = {
   key: string;
   value: User | null;
@@ -17,8 +15,7 @@ export function subscribeToStorage(callback: () => void) {
       if (
         key &&
         key !== "smartwork_user" &&
-        key !== "smartwork_token" &&
-        key !== "smartwork_ai_provider"
+        key !== "smartwork_token"
       ) {
         return;
       }
@@ -61,19 +58,6 @@ export function getStoredUserSnapshot(): User | null {
     cachedUserSnapshot = { key: cacheKey, value: null };
     return null;
   }
-}
-
-export function getStoredAiProviderSnapshot(): AiProvider {
-  if (typeof window === "undefined") return "HUGGINGFACE";
-  const storedProvider = window.localStorage.getItem("smartwork_ai_provider") ?? "";
-  if (
-    storedProvider === "OPENAI" ||
-    storedProvider === "HUGGINGFACE" ||
-    storedProvider === "GEMINI"
-  ) {
-    return storedProvider;
-  }
-  return "HUGGINGFACE";
 }
 
 export function getJobUrlSnapshot(): string {

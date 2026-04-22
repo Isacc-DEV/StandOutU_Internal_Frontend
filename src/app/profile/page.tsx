@@ -339,7 +339,7 @@ export default function ProfilePage() {
                         className="group relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-slate-900 text-lg font-semibold text-white shadow-lg ring-2 ring-slate-200 transition hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-wait disabled:opacity-80"
                         aria-label="Upload new avatar"
                       >
-                        {hasAvatar ? (
+                        {hasAvatar && displayAvatarUrl ? (
                           (displayAvatarUrl.startsWith('data:') || displayAvatarUrl.startsWith('blob:')) ? (
                             <img
                               src={displayAvatarUrl}
