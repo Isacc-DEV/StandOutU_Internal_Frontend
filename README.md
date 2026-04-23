@@ -37,6 +37,8 @@ Frontend `.env.local`:
 PORT=3000
 NEXT_PUBLIC_API_PORT=4000
 NEXTAUTH_URL=http://89.117.21.252:3000
+# Optional if you want to be explicit for Next dev asset access:
+# ALLOWED_DEV_ORIGINS=89.117.21.252
 ```
 
 Backend `.env`:
