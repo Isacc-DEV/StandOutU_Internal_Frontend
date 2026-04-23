@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import TopNav from '../../components/TopNav';
 import { api } from '../../lib/api';
 import { type ClientUser, saveAuth } from '../../lib/auth';
@@ -20,29 +19,12 @@ function getInitials(name?: string | null) {
     .toUpperCase();
 }
 
-function normalizeUploadError(err: unknown) {
-  const fallback = 'Upload failed. Please try again.';
-  const raw = err instanceof Error ? err.message : String(err ?? '');
-  if (!raw) return fallback;
-  try {
-    const parsed = JSON.parse(raw) as { message?: string };
-    if (parsed?.message) return parsed.message;
-  } catch {
-    // ignore JSON parse errors
-  }
-  return raw;
-}
-
 type TabType = 'profile' | 'security' | 'payment';
 
 export default function ProfilePage() {
   const router = useRouter();
   const { user, token, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [tempAvatarUrl, setTempAvatarUrl] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   // Profile tab state
   const [isEditing, setIsEditing] = useState(false);
@@ -178,72 +160,6 @@ export default function ProfilePage() {
     }
   }
 
-  useEffect(() => {
-    return () => {
-      if (tempAvatarUrl) URL.revokeObjectURL(tempAvatarUrl);
-    };
-  }, [tempAvatarUrl]);
-
-  const handleAvatarPick = () => {
-    if (uploading) return;
-    fileInputRef.current?.click();
-  };
-
-  async function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setUploadError('');
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!allowedTypes.includes(file.type)) {
-      setUploadError('Please choose a JPG, PNG, GIF, or WEBP image.');
-      event.target.value = '';
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError('Image is too large. Max 5MB.');
-      event.target.value = '';
-      return;
-    }
-
-    const previewUrl = URL.createObjectURL(file);
-    setTempAvatarUrl(previewUrl);
-
-    if (!user || !token) {
-      setUploadError('Please sign in again to update your avatar.');
-      setTempAvatarUrl(null);
-      event.target.value = '';
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file, file.name);
-      const res = await api(
-        '/users/me/avatar',
-        { method: 'POST', body: formData },
-        token,
-      );
-      const payload = res as { user?: ClientUser; avatarUrl?: string };
-      const updatedUser =
-        payload.user ??
-        (payload.avatarUrl
-          ? { ...user, avatarUrl: payload.avatarUrl }
-          : user);
-      if (updatedUser && token) {
-        saveAuth(updatedUser, token);
-      }
-      setTempAvatarUrl(null);
-    } catch (err) {
-      setUploadError(normalizeUploadError(err));
-      setTempAvatarUrl(null);
-    } finally {
-      setUploading(false);
-      event.target.value = '';
-    }
-  }
-
   if (!user) {
     return (
       <main className="min-h-screen bg-gradient-to-b from-[#f4f8ff] via-[#eef2ff] to-white text-slate-900">
@@ -259,10 +175,6 @@ export default function ProfilePage() {
     );
   }
 
-  const avatarUrl = user.avatarUrl?.trim();
-  const displayAvatarUrl = tempAvatarUrl ?? avatarUrl;
-  const hasAvatar =
-    Boolean(displayAvatarUrl) && displayAvatarUrl?.toLowerCase() !== 'nope';
   const initials = getInitials(user.userName);
 
   return (
@@ -272,46 +184,36 @@ export default function ProfilePage() {
         <div className="grid gap-4 min-h-screen xl:grid-cols-[280px_1fr]">
           {/* Sidebar */}
           <section
-            className="flex flex-col gap-2 bg-[#0b1224] text-slate-100"
-            style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
+            className="app-shell-sidebar flex flex-col gap-2"
           >
             <div className="p-4 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Settings</p>
-                  <h1 className="text-lg font-semibold text-slate-100">Account</h1>
+                  <p className="app-shell-kicker text-[11px] uppercase tracking-[0.26em]">Settings</p>
+                  <h1 className="app-shell-title text-lg font-semibold">Account</h1>
                 </div>
               </div>
               <div className="space-y-1">
                 <button
                   onClick={() => setActiveTab('profile')}
-                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                    activeTab === 'profile'
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
-                  }`}
+                  data-active={activeTab === 'profile'}
+                  className="app-shell-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all"
                 >
                   <User className="w-5 h-5" />
                   <span>Profile</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('security')}
-                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                    activeTab === 'security'
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
-                  }`}
+                  data-active={activeTab === 'security'}
+                  className="app-shell-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all"
                 >
                   <Lock className="w-5 h-5" />
                   <span>Security</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('payment')}
-                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                    activeTab === 'payment'
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
-                  }`}
+                  data-active={activeTab === 'payment'}
+                  className="app-shell-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all"
                 >
                   <CreditCard className="w-5 h-5" />
                   <span>Payment</span>
@@ -332,83 +234,18 @@ export default function ProfilePage() {
                   {/* Avatar Section */}
                   <div className="flex items-center gap-6 border-b border-slate-200 pb-8">
                     <div className="flex flex-col items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleAvatarPick}
-                        disabled={uploading}
-                        className="group relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-slate-900 text-lg font-semibold text-white shadow-lg ring-2 ring-slate-200 transition hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-wait disabled:opacity-80"
-                        aria-label="Upload new avatar"
-                      >
-                        {hasAvatar && displayAvatarUrl ? (
-                          (displayAvatarUrl.startsWith('data:') || displayAvatarUrl.startsWith('blob:')) ? (
-                            <img
-                              src={displayAvatarUrl}
-                              alt={`${user.userName} avatar`}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <Image
-                              src={displayAvatarUrl}
-                              alt={`${user.userName} avatar`}
-                              fill
-                              className="object-cover"
-                              unoptimized
-                            />
-                          )
-                        ) : (
-                          initials
-                        )}
-                        <span
-                          className={`absolute inset-0 flex items-center justify-center bg-slate-900/65 text-white backdrop-blur-sm transition ${
-                            uploading ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                          }`}
-                        >
-                          {uploading ? (
-                            <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                          ) : (
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-6 w-6"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <path d="M4 7h3l2-2h6l2 2h3v12H4z" />
-                              <circle cx="12" cy="13" r="3.5" />
-                            </svg>
-                          )}
-                        </span>
-                      </button>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp,image/gif"
-                        onChange={handleAvatarChange}
-                        className="hidden"
-                        disabled={uploading}
-                      />
-                      <button
-                        onClick={handleAvatarPick}
-                        disabled={uploading}
-                        className="text-sm font-medium text-emerald-600 hover:text-emerald-700 disabled:opacity-50"
-                      >
-                        {uploading ? 'Uploading...' : 'Change photo'}
-                      </button>
+                      <div className="flex h-24 w-24 items-center justify-center rounded-full bg-slate-900 text-lg font-semibold text-white shadow-lg ring-2 ring-slate-200">
+                        {initials}
+                      </div>
+                      <span className="text-center text-xs font-medium text-slate-500">
+                        Image avatars removed for a cleaner workspace.
+                      </span>
                     </div>
                     <div>
                       <h2 className="text-xl font-semibold text-slate-900">{user.userName}</h2>
                       <p className="text-sm text-slate-600">{user.email}</p>
                     </div>
                   </div>
-
-                  {uploadError && (
-                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                      {uploadError}
-                    </div>
-                  )}
 
                   {saveError && (
                     <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

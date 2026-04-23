@@ -3,17 +3,17 @@ import { FIELD_MATCHERS, matchField } from "./fieldMatchers";
 import { CommonInputSimulator } from "./inputSimulator";
 import { domainEngine } from "./domainEngine";
 import type { AIQuestionResponse } from "./domainQuestionHandler";
-import { EngineMode } from "./types";
+import type { EngineMode } from "./types";
 
 export class AutofillEngineClass {
   private profile: Profile | null = null;
-  private engineMode: EngineMode = "common";
+  private engineMode: EngineMode | undefined = undefined;
   
   setProfile(profile: Profile) {
     this.profile = profile;
   }
   
-  setEngineMode(mode: EngineMode) {
+  setEngineMode(mode: EngineMode | undefined) {
     this.engineMode = mode;
   }
   
@@ -54,6 +54,7 @@ export class AutofillEngineClass {
       unmatchedCount: result.unmatchedCount,
       unknownCount: 0,
       aiQuestionsHandled: result.aiQuestionsHandled,
+      engineMode: result.engineMode,
     };
   }
   

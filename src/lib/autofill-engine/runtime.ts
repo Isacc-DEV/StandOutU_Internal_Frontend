@@ -1,9 +1,10 @@
 import { autofillEngine } from "./index";
 import type { AIQuestionResponse, DomainAiQuestionPayload } from "./domainQuestionHandler";
 import type { Profile } from "./profile";
+import type { EngineMode } from "./types";
 
 export type AutofillRuntimeOptions = {
-  engineMode?: "auto" | "common" | "greenhouse";
+  engineMode?: "auto" | EngineMode;
   openaiApiKey?: string;
   aiAnswerOverrides?: AIQuestionResponse[];
   aiAnswerDebug?: {
@@ -16,7 +17,7 @@ export type AutofillRuntimeOptions = {
 
 export type AutofillRuntimeResult = {
   success: boolean;
-  engine?: "common" | "greenhouse";
+  engine?: EngineMode;
   redirectUrl?: string;
   error?: string;
   filledCount?: number;
@@ -85,7 +86,7 @@ export async function autofillRuntime(
   const profile = normalizeProfile(profileInput);
   const options = optionsInput ?? {};
   const engineMode =
-    options.engineMode === "greenhouse" || options.engineMode === "common" ? options.engineMode : "auto";
+    options.engineMode && options.engineMode !== "auto" ? options.engineMode : undefined;
   const openaiApiKey = typeof options.openaiApiKey === "string" ? options.openaiApiKey.trim() : "";
   const aiAnswerOverrides = Array.isArray(options.aiAnswerOverrides)
     ? options.aiAnswerOverrides
@@ -155,10 +156,9 @@ export async function autofillRuntime(
     if (redirectUrl) {
       return { success: false, redirectUrl, engine: "greenhouse" };
     }
-    const engine = "aiQuestionsHandled" in result ? "greenhouse" : "common";
     return {
       success: true,
-      engine,
+      engine: result.engineMode,
       filledCount: result.filledCount,
       totalFields: result.totalFields,
       unmatchedCount: result.unmatchedCount,
@@ -186,7 +186,7 @@ export async function autofillCollectDomainQuestions(
   const profile = normalizeProfile(profileInput);
   const options = optionsInput ?? {};
   const engineMode =
-    options.engineMode === "greenhouse" || options.engineMode === "common" ? options.engineMode : "auto";
+    options.engineMode && options.engineMode !== "auto" ? options.engineMode : undefined;
   const debugEnabled = Boolean(options.debug);
   const debugTag = typeof options.debugTag === "string" && options.debugTag.trim()
     ? options.debugTag.trim()

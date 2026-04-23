@@ -1,21 +1,14 @@
-import { useRef, useEffect, CSSProperties } from "react";
+import { useEffect, useRef } from "react";
 import { Check, CheckCheck } from "lucide-react";
-import Image from "next/image";
 import type {
   CommunityMessage,
   TypingIndicator,
   CommunityThreadType,
-  ReadReceiptSummary,
 } from "./types";
 import { AvatarBubble } from "./UIComponents";
-import { formatFullTime, formatBytes, cn } from "./utils";
+import { formatFullTime, formatBytes } from "./utils";
 
-interface CommunityMessageExtended extends CommunityMessage {
-  attachments?: any[];
-  reactions?: any[];
-  replyPreview?: any;
-  readReceipts?: ReadReceiptSummary;
-}
+type CommunityMessageExtended = CommunityMessage;
 
 interface MessageListProps {
   messages: CommunityMessageExtended[];
@@ -103,9 +96,7 @@ export function MessageList({
           const isDeleted = message.isDeleted;
           const isDm = activeType === "DM";
           const isPinned = pinnedMessageIds.has(message.id);
-          
-          // Read receipt logic: show double tick if any other user has read (excluding sender)
-          const readByOthers = message.readReceipts?.userIds.filter(id => id !== message.senderId) || [];
+          const readByOthers = message.readReceipts?.userIds.filter((id) => id !== message.senderId) || [];
           const showDoubleTick = isDm && isSelf && readByOthers.length > 0;
 
           return (
@@ -131,9 +122,7 @@ export function MessageList({
                     isDm && isSelf ? "flex-row-reverse" : ""
                   }`}
                 >
-                  <div className="text-sm font-semibold text-slate-900">
-                    {sender}
-                  </div>
+                  <div className="text-sm font-semibold text-slate-900">{sender}</div>
                   <div className="text-[11px] text-slate-500">
                     {formatFullTime(message.createdAt)}
                   </div>
@@ -142,14 +131,14 @@ export function MessageList({
                   )}
                   {isPinned && (
                     <span className="text-amber-600" title="Pinned message">
-                      📌
+                      Pin
                     </span>
                   )}
                 </div>
-                {message.replyPreview && (
+                {message.replyPreview ? (
                   <div
                     onClick={() => onReplyClick(message)}
-                    className={`mt-1 rounded-lg border-l-4 border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-600 cursor-pointer hover:bg-slate-200 transition ${
+                    className={`mt-1 cursor-pointer rounded-lg border-l-4 border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-600 transition hover:bg-slate-200 ${
                       isDm && isSelf ? "border-r-4 border-l-0" : ""
                     }`}
                   >
@@ -158,84 +147,64 @@ export function MessageList({
                     </div>
                     <div className="truncate">{message.replyPreview.body}</div>
                   </div>
-                )}
-                {message.body && (
+                ) : null}
+                {message.body ? (
                   <div className="relative">
                     <div
-                      onContextMenu={(e) => onContextMenu(e, message)}
+                      onContextMenu={(event) => onContextMenu(event, message)}
                       className={`mt-1 rounded-2xl px-4 py-3 pb-5 text-sm transition ${
-                        hoveredMessageId === message.id
-                          ? "ring-2 ring-slate-200"
-                          : ""
+                        hoveredMessageId === message.id ? "ring-2 ring-slate-200" : ""
                       } ${
                         isDeleted
                           ? "bg-slate-200 italic text-slate-500"
                           : isSelf
-                          ? "bg-[var(--community-accent)] text-[var(--community-ink)]"
-                          : "bg-[var(--community-soft)] text-slate-800"
+                            ? "bg-[var(--community-accent)] text-[var(--community-ink)]"
+                            : "bg-[var(--community-soft)] text-slate-800"
                       }`}
                     >
                       {isDeleted ? "[Message deleted]" : message.body}
-                      {isDm && isSelf && (
-                        <span className="absolute bottom-1.5 right-3 text-blue-600 z-10" title={showDoubleTick ? "Read" : "Sent"}>
-                          {showDoubleTick ? <CheckCheck size={14} strokeWidth={2.5} /> : <Check size={14} strokeWidth={2.5} />}
+                      {isDm && isSelf ? (
+                        <span
+                          className="absolute bottom-1.5 right-3 z-10 text-blue-600"
+                          title={showDoubleTick ? "Read" : "Sent"}
+                        >
+                          {showDoubleTick ? (
+                            <CheckCheck size={14} strokeWidth={2.5} />
+                          ) : (
+                            <Check size={14} strokeWidth={2.5} />
+                          )}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
-                )}
-                {message.attachments && message.attachments.length > 0 && (
+                ) : null}
+                {message.attachments && message.attachments.length > 0 ? (
                   <div className="mt-2 space-y-2">
-                    {message.attachments.map((att) => (
-                      <div key={att.id}>
-                        {att.mimeType.startsWith("image/") ? (
-                          (att.fileUrl.startsWith('data:') || att.fileUrl.startsWith('blob:')) ? (
-                            <img
-                              src={att.fileUrl}
-                              alt={att.fileName}
-                              className="max-w-sm w-auto h-auto rounded"
-                            />
-                          ) : (
-                            <div className="relative max-w-sm w-auto h-auto rounded">
-                              <Image
-                                src={att.fileUrl}
-                                alt={att.fileName}
-                                width={384}
-                                height={384}
-                                className="rounded"
-                                style={{ width: 'auto', height: 'auto' }}
-                                unoptimized
-                              />
-                            </div>
-                          )
-                        ) : (
-                          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
-                            <div className="flex h-16 w-16 items-center justify-center rounded bg-slate-100 text-xs text-slate-600">
-                              📄
-                            </div>
-                            <div className="flex-1 text-xs">
-                              <div className="font-semibold text-slate-900">
-                                {att.fileName}
-                              </div>
-                              <div className="text-slate-500">
-                                {formatBytes(att.fileSize)}
-                              </div>
-                            </div>
-                            <a
-                              href={att.fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-blue-600 hover:underline"
-                            >
-                              Download
-                            </a>
+                    {message.attachments.map((attachment) => (
+                      <a
+                        key={attachment.id}
+                        href={attachment.fileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 transition hover:bg-slate-50"
+                      >
+                        <div className="flex h-16 w-16 items-center justify-center rounded bg-slate-100 text-center text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                          {attachment.mimeType.startsWith("image/") ? "Image" : "File"}
+                        </div>
+                        <div className="flex-1 text-xs">
+                          <div className="font-semibold text-slate-900">
+                            {attachment.fileName}
                           </div>
-                        )}
-                      </div>
+                          <div className="text-slate-500">
+                            {formatBytes(attachment.fileSize)}
+                          </div>
+                        </div>
+                        <span className="text-xs text-blue-600">Open</span>
+                      </a>
                     ))}
                   </div>
-                )}
-                {message.reactions && message.reactions.length > 0 && (
+                ) : null}
+                {message.reactions && message.reactions.length > 0 ? (
                   <div
                     className={`mt-2 flex flex-wrap gap-1 ${
                       isDm && isSelf ? "justify-end" : ""
@@ -255,18 +224,18 @@ export function MessageList({
                       </button>
                     ))}
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           );
         })
       )}
-      {currentTyping.length > 0 && (
+      {currentTyping.length > 0 ? (
         <div className="text-xs italic text-slate-500">
-          {currentTyping.map((t) => t.userName).join(", ")}{" "}
+          {currentTyping.map((typingUser) => typingUser.userName).join(", ")}{" "}
           {currentTyping.length === 1 ? "is" : "are"} typing...
         </div>
-      )}
+      ) : null}
       <div ref={bottomRef} />
     </div>
   );

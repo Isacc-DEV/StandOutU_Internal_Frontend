@@ -1,6 +1,16 @@
 import { readAuth } from './auth';
 
-const LOCAL_API_PORT = 4000;
+const DEFAULT_API_PORT = 4000;
+
+function getConfiguredApiPort() {
+  const raw = (process.env.NEXT_PUBLIC_API_PORT || '').trim();
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? String(parsed) : String(DEFAULT_API_PORT);
+}
+
+function isLocalHostname(hostname: string) {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
 
 export class ApiNetworkError extends Error {
   constructor(url: string, message: string) {
@@ -20,15 +30,14 @@ function resolveApiBase(): string {
   const envBase = (process.env.NEXT_PUBLIC_API_BASE || '').trim();
   if (envBase) {
     const normalized = envBase.replace(/\/$/, '');
+    if (normalized.startsWith('/')) {
+      return normalized;
+    }
     if (typeof window !== 'undefined') {
       try {
         const envUrl = new URL(normalized);
-        const envHost = envUrl.hostname;
-        const isEnvLocal = envHost === 'localhost' || envHost === '127.0.0.1';
-        const isWindowLocal =
-          window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        if (isEnvLocal && !isWindowLocal) {
-          const port = envUrl.port || String(LOCAL_API_PORT);
+        if (isLocalHostname(envUrl.hostname) && !isLocalHostname(window.location.hostname)) {
+          const port = envUrl.port || getConfiguredApiPort();
           return `${window.location.protocol}//${window.location.hostname}:${port}`;
         }
       } catch {
@@ -38,11 +47,12 @@ function resolveApiBase(): string {
     return normalized;
   }
   if (typeof window === 'undefined') return '';
-  const { protocol, hostname } = window.location;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return `${protocol}//${hostname}:${LOCAL_API_PORT}`;
+  const { origin, protocol, hostname, port } = window.location;
+  const apiPort = getConfiguredApiPort();
+  if (port === apiPort) {
+    return origin;
   }
-  return window.location.origin;
+  return `${protocol}//${hostname}:${apiPort}`;
 }
 
 export const API_BASE = resolveApiBase();
@@ -51,6 +61,12 @@ function buildApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const base = API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
   if (!base) return path;
+  if (base.startsWith('/')) {
+    if (typeof window === 'undefined') return `${base}${path}`;
+    const prefix = base.replace(/\/$/, '');
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return new URL(`${prefix}${normalizedPath}`, window.location.origin).toString();
+  }
   return new URL(path, base).toString();
 }
 
@@ -118,16 +134,17 @@ export async function workspaceApi<T = unknown>(
   if (init?.body && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
+  const url = buildApiUrl(path);
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await fetch(url, {
       ...init,
       headers,
       cache: 'no-store',
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Network error contacting API (${API_BASE || 'unknown'}): ${message}`);
+    throw new Error(`Network error contacting API (${url || 'unknown'}): ${message}`);
   }
   if (!res.ok) {
     if (res.status === 401) {

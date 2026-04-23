@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --hostname 0.0.0.0",
+    "dev:webpack": "next dev --webpack --hostname 0.0.0.0",
     "build": "next build",
     "build:autofill": "vite build --config src/lib/autofill-engine/vite.config.ts",
     "build:autofill:watch": "vite build --watch --config src/lib/autofill-engine/vite.config.ts",
-    "start": "next start",
+    "start": "next start --hostname 0.0.0.0",
     "lint": "eslint"
   },
   "dependencies": {
@@ -25,7 +26,6 @@
     "next-auth": "^4.24.6",
     "react": "19.2.1",
     "react-dom": "19.2.1",
-    "smartwork": "file:..",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4"
   },

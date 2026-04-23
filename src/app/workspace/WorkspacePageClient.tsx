@@ -1,0 +1,1217 @@
+'use client';
+
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
+import DeferredRouteLoader from "@/components/DeferredRouteLoader";
+import TopNav from "@/components/TopNav";
+import type {
+  DesktopBridge,
+  Profile,
+  BaseInfo,
+  ApplicationSession,
+  ApplicationPhraseResponse,
+  ResumePreviewTab,
+  WebviewHandle,
+} from "./types";
+import { workspaceApi as api } from "@/lib/api";
+import { EMPTY_RESUME_PREVIEW } from "@/lib/constants";
+import {
+  buildBulletCountDefaults,
+  buildPromptCompanyTitleKeys,
+  cleanBaseInfo,
+  formatPhone,
+  normalizeBaseResume,
+} from "@/lib/resume";
+import { renderResumeTemplate } from "@/lib/resumeTemplate";
+import { normalizeTextForMatch } from "@/lib/utils";
+import { useWorkspaceChat } from "@/hooks/useWorkspaceChat";
+import { useResumeTemplates } from "@/hooks/useResumeTemplates";
+import { useWorkspaceProfiles } from "@/hooks/useWorkspaceProfiles";
+import { useWorkspaceWebview } from "@/hooks/useWorkspaceWebview";
+import { useWorkspaceNavigation } from "@/hooks/useWorkspaceNavigation";
+import { useWorkspaceCheck } from "@/hooks/useWorkspaceCheck";
+import { useWorkspaceAutofill } from "@/hooks/useWorkspaceAutofill";
+import { useWorkspaceResume } from "@/hooks/useWorkspaceResume";
+import {
+  getJobUrlSnapshot,
+  getStoredUserSnapshot,
+  subscribeToLocation,
+  subscribeToStorage,
+} from "@/lib/externalStore";
+import {
+  loadProfileTabsFromSession,
+  loadUrlTabsFromSession,
+  normalizeStoredUrl,
+  saveProfileTabsToSession,
+  saveUrlTabsToSession,
+  saveLastWorkspaceProfileId,
+  type ProfileTabStorageEntry,
+  type ProfileTabsEntry,
+} from "@/lib/workspace/storage";
+
+function WorkspacePaneLoader() {
+  return (
+    <div className="flex min-h-[calc(100vh-57px)] flex-1 items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500 shadow-sm xl:ml-[280px]">
+      Loading workspace panels...
+    </div>
+  );
+}
+
+function WorkspaceSidebarLoader() {
+  return (
+    <div className="hidden bg-[#0b1224] xl:fixed xl:left-0 xl:top-[57px] xl:block xl:h-[calc(100vh-57px)] xl:w-[280px]" />
+  );
+}
+
+function WorkspaceBootLoader({ detail }: { detail: string }) {
+  return (
+    <main className="min-h-screen w-full bg-gray-100 text-slate-900">
+      <TopNav />
+      <div className="pt-[57px]">
+        <DeferredRouteLoader title="Workspace" detail={detail} />
+      </div>
+    </main>
+  );
+}
+
+const JdPreviewModal = dynamic(() => import("@/components/workspace/JdPreviewModal"), {
+  loading: () => null,
+});
+
+const WorkspaceSidebar = dynamic(() => import("@/components/workspace/WorkspaceSidebar"), {
+  loading: () => <WorkspaceSidebarLoader />,
+});
+
+const WorkspaceBrowser = dynamic(() => import("@/components/workspace/WorkspaceBrowser"), {
+  loading: () => <WorkspacePaneLoader />,
+});
+
+function buildBaseResumePreviewTab(profile?: Profile | null): ResumePreviewTab {
+  const label = profile?.displayName ? `${profile.displayName} 1` : "Resume 1";
+  return {
+    id: profile?.id ? `base-${profile.id}` : "base-resume",
+    label,
+    kind: "base",
+    profileId: profile?.id,
+    resume: normalizeBaseResume(profile?.baseResume),
+  };
+}
+
+function buildAnswerSessionKey(profileId: string, tabId: string) {
+  return profileId && tabId ? `${profileId}:${tabId}` : "";
+}
+
+export default function Page() {
+  const user = useSyncExternalStore(subscribeToStorage, getStoredUserSnapshot, () => null);
+  const jobUrlFromQuery = useSyncExternalStore(subscribeToLocation, getJobUrlSnapshot, () => "");
+  const [url, setUrl] = useState<string>("");
+  const [hasEditedUrl, setHasEditedUrl] = useState(false);
+  const [applicationPhrases, setApplicationPhrases] = useState<string[]>([]);
+  const [checkEnabled, setCheckEnabled] = useState(false);
+  const [session, setSession] = useState<ApplicationSession | null>(null);
+  const [loadingAction, setLoadingAction] = useState<string>("");
+  const [showBaseInfo, setShowBaseInfo] = useState(false);
+  const [baseInfoView, setBaseInfoView] = useState<BaseInfo>(() => cleanBaseInfo({}));
+  const [jdPreviewOpen, setJdPreviewOpen] = useState(false);
+  const [jdDraft, setJdDraft] = useState("");
+  const [jdCaptureError, setJdCaptureError] = useState("");
+  const [bulletCountByCompany, setBulletCountByCompany] = useState<Record<string, number>>({});
+  const [tailorLoading, setTailorLoading] = useState(false);
+  const [tailorError, setTailorError] = useState("");
+  const [tailorPdfLoading, setTailorPdfLoading] = useState(false);
+  const [tailorPdfError, setTailorPdfError] = useState("");
+  const [profileResumeTabs, setProfileResumeTabs] = useState<Record<string, ResumePreviewTab[]>>({});
+  const [profileActiveResumeTabIds, setProfileActiveResumeTabIds] = useState<Record<string, string | null>>({});
+  const [tabs, setTabs] = useState<{ id: string; url: string }[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [loadingTabId, setLoadingTabId] = useState<string | null>(null);
+  const [autofillTabIds, setAutofillTabIds] = useState<string[]>([]);
+  const [tabType, setTabType] = useState<"links" | "profiles">("links");
+  const [navigationStarted, setNavigationStarted] = useState(false);
+  const [loadedUrl, setLoadedUrl] = useState<string>("");
+  const autoGoUrlRef = useRef<string>("");
+  const autoReconnectUrlRef = useRef<string>("");
+  const lastQueryUrlRef = useRef<string>("");
+  const pendingGoTabIdRef = useRef<string | null>(null);
+  const webviewRefsByTabRef = useRef<Record<string, WebviewHandle | null>>({});
+
+  const router = useRouter();
+  const isClient = typeof window !== "undefined";
+  const restoredStorageKeyRef = useRef<string | null>(null);
+  const createTabId = useCallback(() => {
+    return typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `tab-${Date.now()}`;
+  }, []);
+  const applyLinkTabState = useCallback(
+    (
+      nextTabs: { id: string; url: string }[],
+      nextActiveTabId: string | null,
+      nextUrl: string
+    ) => {
+      setTabs(nextTabs);
+      setActiveTabId(nextActiveTabId);
+      setHasEditedUrl(Boolean(nextUrl));
+      setUrl(nextUrl);
+      setLoadedUrl(nextUrl);
+      setNavigationStarted(Boolean(nextUrl));
+    },
+    []
+  );
+  const applyProfileNavigationState = useCallback((nextUrl: string) => {
+    setHasEditedUrl(Boolean(nextUrl));
+    setUrl(nextUrl);
+    setLoadedUrl(nextUrl);
+    setNavigationStarted(Boolean(nextUrl));
+  }, []);
+  const applyIncomingJobUrl = useCallback((nextUrl: string) => {
+    setHasEditedUrl(false);
+    setUrl(nextUrl);
+  }, []);
+
+  const getProfileTabsEntry = useCallback(
+    (profileId: string) => {
+      if (!isClient) return null;
+      const entries = loadProfileTabsFromSession();
+      return entries.find((entry) => entry.profileId === profileId) ?? null;
+    },
+    [isClient]
+  );
+
+  const updateProfileTabsEntry = useCallback(
+    (profileId: string, updater: (current: ProfileTabsEntry) => ProfileTabsEntry) => {
+      if (!isClient) return;
+      const entries = loadProfileTabsFromSession();
+      const index = entries.findIndex((entry) => entry.profileId === profileId);
+      const current: ProfileTabsEntry =
+        index >= 0 ? entries[index] : { profileId, storage: [] };
+      const next = updater(current);
+      if (index >= 0) {
+        entries[index] = next;
+      } else {
+        entries.push(next);
+      }
+      saveProfileTabsToSession(entries);
+    },
+    [isClient]
+  );
+  const showError = useCallback((message: string) => {
+    if (!message) return;
+    if (/connecting timed out/i.test(message)) {
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.alert(message);
+    }
+  }, []);
+
+  const resetProfileState = useCallback(
+    (
+      profileId: string,
+      profilesList: Profile[],
+      options?: { preserveNavigation?: boolean }
+    ) => {
+      const preserveNavigation = Boolean(options?.preserveNavigation);
+      const profile = profilesList.find((item) => item.id === profileId);
+      const baseResumeTab = profile ? buildBaseResumePreviewTab(profile) : null;
+
+      setSession(null);
+      setCheckEnabled(false);
+      setShowBaseInfo(false);
+      if (!preserveNavigation) {
+        setNavigationStarted(false);
+        setLoadedUrl("");
+        setTabs([]);
+        setActiveTabId(null);
+        setLoadingTabId(null);
+      } else {
+        autoReconnectUrlRef.current = "";
+        setLoadingTabId(null);
+      }
+
+      setBaseInfoView(cleanBaseInfo(profile?.baseInfo ?? {}));
+
+      setTailorLoading(false);
+      setTailorError("");
+      setTailorPdfLoading(false);
+      setTailorPdfError("");
+      if (profileId) {
+        setProfileResumeTabs((prev) => {
+          if (!baseResumeTab) return prev;
+          const existingTabs = prev[profileId] ?? [];
+          const generatedTabs = existingTabs.filter((tab) => tab.kind === "generated");
+          return { ...prev, [profileId]: [baseResumeTab, ...generatedTabs] };
+        });
+        setProfileActiveResumeTabIds((prev) => {
+          if (!baseResumeTab) return prev;
+          const currentActive = prev[profileId] ?? null;
+          const shouldKeepActive = Boolean(currentActive && currentActive !== baseResumeTab.id);
+          return { ...prev, [profileId]: shouldKeepActive ? currentActive : baseResumeTab.id };
+        });
+      }
+      setJdPreviewOpen(false);
+      setJdDraft("");
+      setJdCaptureError("");
+
+      if (!profile) {
+        setBulletCountByCompany({});
+        return;
+      }
+      const normalizedResume = normalizeBaseResume(profile.baseResume);
+      const titleKeys = buildPromptCompanyTitleKeys(normalizedResume.workExperience ?? [])
+        .filter(Boolean);
+      setBulletCountByCompany(
+        titleKeys.length
+          ? buildBulletCountDefaults(titleKeys, profile.baseAdditionalBullets)
+          : {}
+      );
+    },
+    []
+  );
+
+  const {
+    profiles,
+    profilesLoading,
+    selectedProfileId,
+    setSelectedProfileId,
+    selectedProfile,
+    refreshMetrics,
+  } = useWorkspaceProfiles({ api, user, onProfileChange: resetProfileState });
+
+  const {
+    resumeTemplates,
+    resumeTemplatesLoading,
+    selectedTemplate,
+    templateStatusError,
+    loadResumeTemplates,
+  } = useResumeTemplates({ api, user, selectedProfile });
+
+  const handleManualJdInputRef = useRef<() => void>(() => {});
+  const handleAutofillRef = useRef<() => void>(() => {});
+
+  const effectiveUrl = hasEditedUrl ? url : url || jobUrlFromQuery;
+  const sessionUrl =
+    session &&
+    session.profileId === selectedProfileId &&
+    tabType === "links"
+      ? session.url
+      : "";
+  const browserSrc = navigationStarted ? (loadedUrl || sessionUrl || "") : "";
+  const webviewPartition =
+    tabType === "profiles" && selectedProfileId
+      ? `persist:smartwork-profile-${selectedProfileId}`
+      : "persist:smartwork-jobview";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (user) return;
+    const stored = window.localStorage.getItem("smartwork_user");
+    const storedToken = window.localStorage.getItem("smartwork_token");
+    if (stored && storedToken) return;
+    router.replace("/auth");
+  }, [router, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const loadPhrases = async () => {
+      try {
+        const data = (await api("/application-phrases")) as ApplicationPhraseResponse;
+        if (data?.phrases?.length) {
+          setApplicationPhrases(data.phrases);
+        }
+      } catch (err) {
+        console.error("Failed to load application phrases", err);
+      }
+    };
+    void loadPhrases();
+  }, [user]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    if (tabType !== "links") return;
+    if (tabs.length > 0) return;
+    const stored = loadUrlTabsFromSession();
+    if (stored?.tabs.length) {
+      const restoredTabs = stored.tabs.map((tab) => ({
+        id: createTabId(),
+        url: tab.url,
+      }));
+      const activeIndex = stored.tabs.findIndex((tab) => tab.url === stored.activeUrl);
+      const activeTab = restoredTabs[activeIndex] ?? restoredTabs[0];
+      applyLinkTabState(restoredTabs, activeTab?.id ?? null, activeTab?.url ?? "");
+      return;
+    }
+    const id = createTabId();
+    applyLinkTabState([{ id, url: "" }], id, "");
+  }, [applyLinkTabState, createTabId, isClient, tabType, tabs.length]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    if (tabType !== "links") return;
+    if (!tabs.length) return;
+    const activeUrl = tabs.find((tab) => tab.id === activeTabId)?.url ?? null;
+    saveUrlTabsToSession(
+      tabs.map((tab) => ({ url: tab.url })),
+      activeUrl
+    );
+  }, [activeTabId, isClient, tabType, tabs]);
+
+  const desktopBridge: DesktopBridge | undefined =
+    isClient ? (window as unknown as { smartwork?: DesktopBridge }).smartwork : undefined;
+  const isElectron = Boolean(desktopBridge?.openJobWindow);
+
+  const baseResumeView = useMemo(
+    () => normalizeBaseResume(selectedProfile?.baseResume),
+    [selectedProfile]
+  );
+  const companyTitleKeys = useMemo(() => {
+    return buildPromptCompanyTitleKeys(baseResumeView.workExperience ?? []).filter(Boolean);
+  }, [baseResumeView]);
+  const workExperienceLabels = useMemo(() => {
+    return (baseResumeView.workExperience ?? []).map((item, index) => {
+      const company = (item.companyTitle ?? "").trim();
+      const role = (item.roleTitle ?? "").trim();
+      return company || role || `Experience ${index + 1}`;
+    });
+  }, [baseResumeView]);
+  const resumePreviewTabs = useMemo(
+    () => profileResumeTabs[selectedProfileId] ?? [],
+    [profileResumeTabs, selectedProfileId]
+  );
+  const activeResumeTabId = useMemo(
+    () => profileActiveResumeTabIds[selectedProfileId] ?? null,
+    [profileActiveResumeTabIds, selectedProfileId]
+  );
+  const activeResumeTab = useMemo(() => {
+    if (!resumePreviewTabs.length) return null;
+    return (
+      resumePreviewTabs.find((tab) => tab.id === activeResumeTabId) ?? resumePreviewTabs[0]
+    );
+  }, [activeResumeTabId, resumePreviewTabs]);
+  const activeResumePreviewHtml = useMemo(() => {
+    if (!selectedTemplate || !activeResumeTab) return "";
+    return renderResumeTemplate(selectedTemplate.html, activeResumeTab.resume);
+  }, [activeResumeTab, selectedTemplate]);
+  const activeResumePreviewDoc = useMemo(() => {
+    const html = activeResumePreviewHtml.trim();
+    return html ? html : EMPTY_RESUME_PREVIEW;
+  }, [activeResumePreviewHtml]);
+  const activeResumeLlmRawOutput =
+    activeResumeTab?.kind === "generated" ? activeResumeTab.llmRawOutput ?? "" : "";
+  const activeResumeLlmMeta =
+    activeResumeTab?.kind === "generated" ? activeResumeTab.llmMeta ?? null : null;
+  const activeAnswerSessionKey =
+    selectedProfileId && activeResumeTab?.id
+      ? buildAnswerSessionKey(selectedProfileId, activeResumeTab.id)
+      : "";
+  const {
+    chatMessages,
+    chatInput,
+    setChatInput,
+    chatLoading,
+    chatMessagesEndRef,
+    chatInputRef,
+    removeChatSession,
+    handleSendChatMessage,
+  } = useWorkspaceChat({
+    api,
+    activeSessionKey: activeAnswerSessionKey,
+    activeResume: activeResumeTab?.resume ?? null,
+    activeJobDescription: activeResumeTab?.jd ?? null,
+  });
+
+  const baseDraft = cleanBaseInfo(baseInfoView);
+  const phoneCombined = formatPhone(baseDraft.contact) || "N/A";
+  const normalizedCheckPhrases = useMemo(() => {
+    const merged = new Map<string, string>();
+    applicationPhrases.forEach((phrase) => {
+      const normalized = normalizeTextForMatch(phrase);
+      if (!normalized) return;
+      const squished = normalized.replace(/\s+/g, "");
+      merged.set(normalized, squished);
+    });
+    return Array.from(merged.entries()).map(([normalized, squished]) => ({
+      normalized,
+      squished,
+    }));
+  }, [applicationPhrases]);
+  const canCheck =
+    isElectron &&
+    Boolean(session) &&
+    checkEnabled &&
+    session?.status !== "SUBMITTED" &&
+    loadingAction !== "check" &&
+    loadingAction !== "go";
+
+  const handleHotkey = useCallback(
+    (eventLike: {
+      key?: string;
+      code?: string;
+      ctrlKey?: boolean;
+      metaKey?: boolean;
+      shiftKey?: boolean;
+      control?: boolean;
+      shift?: boolean;
+      preventDefault?: () => void;
+    }) => {
+      const keyRaw = (eventLike.key || eventLike.code || "").toString().toLowerCase();
+      const ctrl = Boolean(eventLike.ctrlKey || eventLike.metaKey || eventLike.control);
+      const shift = Boolean(eventLike.shiftKey || eventLike.shift);
+      if (!ctrl || !shift) return;
+      if (keyRaw === "g" || keyRaw === "keyg") {
+        eventLike.preventDefault?.();
+        handleManualJdInputRef.current();
+      } else if (keyRaw === "f" || keyRaw === "keyf") {
+        eventLike.preventDefault?.();
+        handleAutofillRef.current();
+      }
+    },
+    []
+  );
+
+  const {
+    webviewRef,
+    setWebviewRef,
+    webviewStatus,
+    setWebviewStatus,
+    canGoBack,
+    setCanGoBack,
+    canGoForward,
+    setCanGoForward,
+    collectWebviewText,
+    collectWebviewFields,
+    applyAutofillActions,
+    captureWebviewStorage,
+    restoreWebviewStorage,
+    readWebviewSelection,
+    handleGoBack,
+    handleGoForward,
+  } = useWorkspaceWebview({
+    isClient,
+    isElectron,
+    browserSrc,
+    handleHotkey,
+    setCheckEnabled,
+  });
+
+  const setWebviewRefForTab = useCallback((tabId: string, node: WebviewHandle | null) => {
+    if (node) {
+      webviewRefsByTabRef.current[tabId] = node;
+    } else {
+      delete webviewRefsByTabRef.current[tabId];
+    }
+  }, []);
+
+  const handleSelectProfile = useCallback(
+    (profileId: string) => {
+      setSelectedProfileId(profileId);
+      resetProfileState(profileId, profiles, { preserveNavigation: tabType === "links" });
+    },
+    [profiles, resetProfileState, setSelectedProfileId, tabType]
+  );
+
+  useEffect(() => {
+    if (!selectedProfileId) return;
+    saveLastWorkspaceProfileId(selectedProfileId);
+  }, [selectedProfileId]);
+
+  const handleUrlChange = useCallback(
+    (nextUrl: string) => {
+      setHasEditedUrl(true);
+      setUrl(nextUrl);
+      setWebviewStatus("idle");
+      setCheckEnabled(false);
+      // Reset navigation state if URL changes after navigation started
+      if (navigationStarted && nextUrl !== loadedUrl && nextUrl !== session?.url) {
+        setNavigationStarted(false);
+        setCanGoBack(false);
+        setCanGoForward(false);
+      }
+    },
+    [
+      loadedUrl,
+      navigationStarted,
+      session?.url,
+      setHasEditedUrl,
+      setCheckEnabled,
+      setCanGoBack,
+      setCanGoForward,
+      setNavigationStarted,
+      setUrl,
+      setWebviewStatus,
+    ]
+  );
+
+  useEffect(() => {
+    if (!jobUrlFromQuery) return;
+    if (lastQueryUrlRef.current === jobUrlFromQuery) return;
+    lastQueryUrlRef.current = jobUrlFromQuery;
+    applyIncomingJobUrl(jobUrlFromQuery);
+  }, [applyIncomingJobUrl, jobUrlFromQuery]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    if (tabType !== "profiles") return;
+    if (!selectedProfileId) return;
+    const entry = getProfileTabsEntry(selectedProfileId);
+    const storedUrl = entry?.lastVisitedLink ?? "";
+    applyProfileNavigationState(storedUrl);
+  }, [applyProfileNavigationState, getProfileTabsEntry, isClient, selectedProfileId, tabType]);
+
+
+  const setLoadingActionScoped = useCallback(
+    (value: string) => {
+      setLoadingAction(value);
+      if (value === "go") {
+        const nextTabId = pendingGoTabIdRef.current ?? activeTabId;
+        setLoadingTabId(nextTabId ?? null);
+        pendingGoTabIdRef.current = null;
+      } else if (!value) {
+        setLoadingTabId(null);
+      }
+    },
+    [activeTabId]
+  );
+
+  const { handleGo, handleRefresh } = useWorkspaceNavigation({
+    api,
+    user,
+    selectedProfileId,
+    url: effectiveUrl,
+    navigationStarted,
+    isElectron,
+    webviewRef,
+    setLoadingAction: setLoadingActionScoped,
+    setCheckEnabled,
+    setNavigationStarted,
+    setLoadedUrl,
+    setSession,
+    showError,
+    refreshMetrics,
+  });
+
+  useEffect(() => {
+    if (!user || !selectedProfileId) return;
+    if (tabType !== "links") return;
+    if (session) return;
+    if (loadingAction === "go") return;
+    const trimmed = effectiveUrl.trim();
+    if (!trimmed) return;
+    if (autoReconnectUrlRef.current === trimmed) return;
+    autoReconnectUrlRef.current = trimmed;
+    void handleGo(trimmed);
+  }, [
+    effectiveUrl,
+    handleGo,
+    loadingAction,
+    selectedProfileId,
+    session,
+    tabType,
+    user,
+  ]);
+
+  const normalizeTabUrl = useCallback((rawUrl: string): string | null => {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return null;
+    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    try {
+      return new URL(withScheme).toString();
+    } catch {
+      return null;
+    }
+  }, []);
+  const syncActiveLinkTabUrl = useCallback(
+    (nextBrowserUrl: string, currentActiveTabId: string | null) => {
+      const normalized = normalizeTabUrl(nextBrowserUrl) ?? nextBrowserUrl;
+      if (currentActiveTabId) {
+        setTabs((prev) => {
+          const index = prev.findIndex((tab) => tab.id === currentActiveTabId);
+          if (index >= 0) {
+            const next = [...prev];
+            next[index] = { ...next[index], url: normalized };
+            return next;
+          }
+          return [...prev, { id: currentActiveTabId, url: normalized }];
+        });
+        return;
+      }
+      const id = createTabId();
+      setTabs((prev) => [...prev, { id, url: normalized }]);
+      setActiveTabId(id);
+    },
+    [createTabId, normalizeTabUrl]
+  );
+
+  const tabsForView = useMemo(() => {
+    if (tabType === "profiles") {
+      return profiles.map((profile) => {
+        const entry = getProfileTabsEntry(profile.id);
+        return {
+          id: profile.id,
+          title: profile.displayName,
+          url: entry?.lastVisitedLink ?? "",
+        };
+      });
+    }
+    return tabs;
+  }, [getProfileTabsEntry, profiles, tabType, tabs]);
+
+  const activeTabIdForView = tabType === "profiles"
+    ? (selectedProfileId || null)
+    : activeTabId;
+  const handleSelectResumeTab = useCallback(
+    (tabId: string) => {
+      if (!selectedProfileId) return;
+      setProfileActiveResumeTabIds((prev) => ({ ...prev, [selectedProfileId]: tabId }));
+    },
+    [selectedProfileId]
+  );
+
+  const handleCloseResumeTab = useCallback(
+    (tabId: string) => {
+      if (!selectedProfileId) return;
+      removeChatSession(buildAnswerSessionKey(selectedProfileId, tabId));
+      setProfileResumeTabs((prev) => {
+        const currentTabs = prev[selectedProfileId] ?? [];
+        const nextTabs = currentTabs.filter((tab) => tab.id !== tabId);
+        const fallbackTabs = nextTabs.length
+          ? nextTabs
+          : [buildBaseResumePreviewTab(selectedProfile)];
+        setProfileActiveResumeTabIds((activePrev) => {
+          if ((activePrev[selectedProfileId] ?? null) !== tabId) return activePrev;
+          return { ...activePrev, [selectedProfileId]: fallbackTabs[0]?.id ?? null };
+        });
+        return { ...prev, [selectedProfileId]: fallbackTabs };
+      });
+    },
+    [removeChatSession, selectedProfile, selectedProfileId]
+  );
+
+  useEffect(() => {
+    const validIds = new Set(tabsForView.map((tab) => tab.id));
+    Object.keys(webviewRefsByTabRef.current).forEach((tabId) => {
+      if (!validIds.has(tabId)) {
+        delete webviewRefsByTabRef.current[tabId];
+      }
+    });
+  }, [tabsForView]);
+
+  useEffect(() => {
+    if (tabType !== "links") return;
+    if (!browserSrc) return;
+    syncActiveLinkTabUrl(browserSrc, activeTabId);
+  }, [activeTabId, browserSrc, syncActiveLinkTabUrl, tabType]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    if (tabType !== "profiles") return;
+    if (!selectedProfileId) return;
+    const currentUrl = browserSrc || loadedUrl;
+    if (!currentUrl) return;
+    const normalized = normalizeTabUrl(currentUrl) ?? normalizeStoredUrl(currentUrl);
+    if (!normalized) return;
+    updateProfileTabsEntry(selectedProfileId, (current) => ({
+      ...current,
+      profileId: selectedProfileId,
+      lastVisitedLink: normalized,
+    }));
+  }, [
+    browserSrc,
+    isClient,
+    loadedUrl,
+    normalizeTabUrl,
+    selectedProfileId,
+    tabType,
+    updateProfileTabsEntry,
+  ]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    if (tabType !== "profiles") return;
+    if (!selectedProfileId) return;
+    if (webviewStatus !== "ready") return;
+    const currentUrl = browserSrc || loadedUrl;
+    if (!currentUrl) return;
+    const normalized = normalizeTabUrl(currentUrl) ?? normalizeStoredUrl(currentUrl);
+    if (!normalized) return;
+    const entry = getProfileTabsEntry(selectedProfileId);
+    const stored = entry?.storage?.find(
+      (item) => normalizeStoredUrl(item.link) === normalized
+    );
+    const hasStoredData = Boolean(
+      stored &&
+        (stored.cookie ||
+          (stored.sessionStorage && Object.keys(stored.sessionStorage).length) ||
+          (stored.localStorage && Object.keys(stored.localStorage).length))
+    );
+    if (!hasStoredData || !stored) return;
+    const restoreKey = `${selectedProfileId}:${normalized}`;
+    if (restoredStorageKeyRef.current === restoreKey) return;
+    restoredStorageKeyRef.current = restoreKey;
+    void restoreWebviewStorage({
+      cookie: stored.cookie ?? "",
+      sessionStorage: stored.sessionStorage ?? {},
+      localStorage: stored.localStorage ?? {},
+    });
+  }, [
+    browserSrc,
+    getProfileTabsEntry,
+    isClient,
+    loadedUrl,
+    normalizeTabUrl,
+    restoreWebviewStorage,
+    selectedProfileId,
+    tabType,
+    webviewStatus,
+  ]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    if (tabType !== "profiles") return;
+    if (!selectedProfileId) return;
+    if (webviewStatus !== "ready") return;
+    const currentUrl = browserSrc || loadedUrl;
+    if (!currentUrl) return;
+    const normalized = normalizeTabUrl(currentUrl) ?? normalizeStoredUrl(currentUrl);
+    if (!normalized) return;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const snapshot = await captureWebviewStorage();
+        if (!snapshot) return;
+        const hasSnapshotData = Boolean(
+          (snapshot.cookie && snapshot.cookie.trim()) ||
+            (snapshot.sessionStorage && Object.keys(snapshot.sessionStorage).length) ||
+            (snapshot.localStorage && Object.keys(snapshot.localStorage).length)
+        );
+        if (!hasSnapshotData) return;
+        updateProfileTabsEntry(selectedProfileId, (current) => {
+          const storageList = current.storage ? [...current.storage] : [];
+          const existingIndex = storageList.findIndex(
+            (item) => normalizeStoredUrl(item.link) === normalized
+          );
+          const nextEntry: ProfileTabStorageEntry = {
+            link: normalized,
+            cookie: snapshot.cookie ?? "",
+            sessionStorage: snapshot.sessionStorage ?? {},
+            localStorage: snapshot.localStorage ?? {},
+          };
+          if (existingIndex >= 0) {
+            storageList[existingIndex] = { ...storageList[existingIndex], ...nextEntry };
+          } else {
+            storageList.push(nextEntry);
+          }
+          return {
+            ...current,
+            profileId: selectedProfileId,
+            lastVisitedLink: normalized,
+            storage: storageList,
+          };
+        });
+      })();
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [
+    browserSrc,
+    captureWebviewStorage,
+    isClient,
+    loadedUrl,
+    normalizeTabUrl,
+    selectedProfileId,
+    tabType,
+    updateProfileTabsEntry,
+    webviewStatus,
+  ]);
+
+  const handleTabSelect = useCallback(
+    (tabId: string) => {
+      if (tabType === "profiles") {
+        if (tabId === selectedProfileId) return;
+        handleSelectProfile(tabId);
+        return;
+      }
+      const nextTab = tabs.find((tab) => tab.id === tabId);
+      if (!nextTab) return;
+      const nextUrl = nextTab.url;
+      setActiveTabId(nextTab.id);
+      setLoadingTabId(null);
+      pendingGoTabIdRef.current = null;
+      setHasEditedUrl(Boolean(nextUrl));
+      setUrl(nextUrl);
+      setLoadedUrl(nextUrl);
+      setNavigationStarted(Boolean(nextUrl));
+    },
+    [handleSelectProfile, selectedProfileId, tabType, tabs]
+  );
+
+  const handleAddTab = useCallback(() => {
+    if (tabType !== "links") return;
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `tab-${Date.now()}`;
+    setTabs((prev) => [...prev, { id, url: "" }]);
+    setActiveTabId(id);
+    setLoadingTabId(null);
+    handleUrlChange("");
+  }, [handleUrlChange, tabType]);
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      if (tabType !== "links") return;
+      delete webviewRefsByTabRef.current[tabId];
+      setTabs((prev) => {
+        const nextTabs = prev.filter((tab) => tab.id !== tabId);
+        if (nextTabs.length === 0) {
+          const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `tab-${Date.now()}`;
+          setActiveTabId(id);
+          setLoadingTabId(null);
+          handleUrlChange("");
+          return [{ id, url: "" }];
+        }
+        if (activeTabId === tabId) {
+          const currentIndex = prev.findIndex((tab) => tab.id === tabId);
+          const nextTab =
+            nextTabs[currentIndex] || nextTabs[currentIndex - 1] || nextTabs[0];
+          setActiveTabId(nextTab.id);
+          setLoadingTabId(null);
+          pendingGoTabIdRef.current = null;
+          setHasEditedUrl(Boolean(nextTab.url));
+          setUrl(nextTab.url);
+          setLoadedUrl(nextTab.url);
+          setNavigationStarted(Boolean(nextTab.url));
+        }
+        return nextTabs;
+      });
+    },
+    [activeTabId, handleUrlChange, tabType]
+  );
+
+  const handleDuplicateTab = useCallback(
+    (tabId: string) => {
+      if (tabType !== "links") return;
+      const sourceTab = tabs.find((tab) => tab.id === tabId);
+      if (!sourceTab) return;
+      const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `tab-${Date.now()}`;
+      setTabs((prev) => {
+        const index = prev.findIndex((tab) => tab.id === tabId);
+        if (index < 0) {
+          return [...prev, { id, url: sourceTab.url }];
+        }
+        const next = [...prev];
+        next.splice(index + 1, 0, { id, url: sourceTab.url });
+        return next;
+      });
+      setActiveTabId(id);
+      setLoadingTabId(null);
+      pendingGoTabIdRef.current = null;
+      setHasEditedUrl(Boolean(sourceTab.url));
+      setUrl(sourceTab.url);
+      setLoadedUrl(sourceTab.url);
+      setNavigationStarted(Boolean(sourceTab.url));
+    },
+    [tabType, tabs]
+  );
+
+  const handleTabTypeChange = useCallback(
+    (value: "links" | "profiles") => {
+      setTabType(value);
+      setLoadingTabId(null);
+      if (value === "links") {
+        const stored = loadUrlTabsFromSession();
+        const nextActiveUrl =
+          stored?.activeUrl ??
+          tabs.find((tab) => tab.id === activeTabId)?.url ??
+          tabs[0]?.url ??
+          "";
+        setActiveTabId((current) => current ?? tabs[0]?.id ?? null);
+        setHasEditedUrl(Boolean(nextActiveUrl));
+        setUrl(nextActiveUrl);
+        setLoadedUrl(nextActiveUrl);
+        setNavigationStarted(Boolean(nextActiveUrl));
+      } else {
+        if (!selectedProfileId && profiles.length > 0) {
+          handleSelectProfile(profiles[0].id);
+          return;
+        }
+        if (selectedProfileId) {
+          const entry = getProfileTabsEntry(selectedProfileId);
+          const storedUrl = entry?.lastVisitedLink ?? "";
+          setHasEditedUrl(Boolean(storedUrl));
+          setUrl(storedUrl);
+          setLoadedUrl(storedUrl);
+          setNavigationStarted(Boolean(storedUrl));
+        }
+      }
+    },
+    [
+      activeTabId,
+      getProfileTabsEntry,
+      handleSelectProfile,
+      profiles,
+      selectedProfileId,
+      tabs,
+    ]
+  );
+
+  useEffect(() => {
+    if (!jobUrlFromQuery) return;
+    if (!user || !selectedProfileId) return;
+    if (loadingAction === "go") return;
+    if (hasEditedUrl) return;
+    const trimmed = jobUrlFromQuery.trim();
+    if (!trimmed) return;
+    if (autoGoUrlRef.current === trimmed) return;
+    autoGoUrlRef.current = trimmed;
+    void handleGo();
+  }, [
+    handleGo,
+    hasEditedUrl,
+    jobUrlFromQuery,
+    loadingAction,
+    selectedProfileId,
+    user,
+  ]);
+
+  const { handleCheck } = useWorkspaceCheck({
+    api,
+    session,
+    user,
+    isElectron,
+    webviewRef,
+    webviewStatus,
+    applicationPhrasesLength: applicationPhrases.length,
+    normalizedCheckPhrases,
+    collectWebviewText,
+    setLoadingAction: setLoadingActionScoped,
+    setCheckEnabled,
+    setSession,
+    showError,
+    refreshMetrics,
+  });
+
+  useWorkspaceAutofill({
+    api,
+    session,
+    selectedProfile: selectedProfile ?? null,
+    isElectron,
+    browserSrc,
+    webviewRef,
+    webviewRefsByTab: webviewRefsByTabRef,
+    activeTabId: activeTabIdForView,
+    webviewStatus,
+    collectWebviewFields,
+    applyAutofillActions,
+    setLoadingAction: setLoadingActionScoped,
+    setSession,
+    showError,
+    setAutofillTabIds,
+  });
+
+  const {
+    handleManualJdInput,
+    handleCancelJd,
+    handleConfirmJd,
+    handleRegenerateResume,
+    handleDownloadTailoredPdf,
+  } = useWorkspaceResume({
+    api,
+    activeResumePreviewHtml,
+    baseResumeView,
+    bulletCountByCompany,
+    companyTitleKeys,
+    createResumePreviewTabId: createTabId,
+    jdDraft,
+    profileDisplayName: selectedProfile?.displayName ?? "",
+    resumeTemplates,
+    resumeTemplatesLoading,
+    selectedProfile,
+    selectedProfileId,
+    selectedTemplate,
+    readWebviewSelection,
+    setActiveResumeTabId: (value) => {
+      if (!selectedProfileId) return;
+      setProfileActiveResumeTabIds((prev) => ({
+        ...prev,
+        [selectedProfileId]:
+          typeof value === "function" ? value(prev[selectedProfileId] ?? null) : value,
+      }));
+    },
+    setJdCaptureError,
+    setJdDraft,
+    setJdPreviewOpen,
+    setResumePreviewTabs: (value) => {
+      if (!selectedProfileId) return;
+      setProfileResumeTabs((prev) => ({
+        ...prev,
+        [selectedProfileId]:
+          typeof value === "function"
+            ? value(prev[selectedProfileId] ?? [buildBaseResumePreviewTab(selectedProfile)])
+            : value,
+      }));
+    },
+    setTailorError,
+    setTailorLoading,
+    setTailorPdfError,
+    setTailorPdfLoading,
+    showError,
+    loadResumeTemplates,
+  });
+
+  useEffect(() => {
+    handleManualJdInputRef.current = () => {
+      void handleManualJdInput();
+    };
+    handleAutofillRef.current = () => {};
+  }, [handleManualJdInput]);
+
+
+  if (!user) {
+    return (
+      <main className="min-h-screen w-full bg-gray-100 text-slate-900">
+        <TopNav />
+        <div className="mx-auto max-w-screen px-4 py-10 text-center text-sm text-slate-800">
+          Redirecting to login...
+        </div>
+      </main>
+    );
+  }
+
+  if (user.role === "OBSERVER") {
+    return (
+      <main className="min-h-screen w-full bg-gray-100 text-slate-900">
+        <TopNav />
+        <div className="mx-auto max-w-screen px-4 py-12 text-center space-y-3">
+          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-700">Observer</p>
+          <h1 className="text-2xl font-semibold">Welcome aboard</h1>
+          <p className="text-sm text-slate-700">
+            Observers can browse announcements. Workspace actions are disabled.
+          </p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-800">
+            <p className="text-sm font-semibold">Stay tuned</p>
+            <p className="text-sm text-slate-700">
+              Ask an admin to upgrade your role to start bidding.
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (profilesLoading) {
+    return (
+      <WorkspaceBootLoader detail="Loading profiles, resume templates, and workspace tools." />
+    );
+  }
+
+  return (
+    <>
+      <main className="min-h-screen w-full bg-gray-100 text-slate-900">
+        <TopNav />
+        <div className="mx-auto w-full min-h-screen space-y-4 pt-[57px]">
+          {user ? null : null}
+
+          {user ? (
+            <div className="relative min-h-[calc(100vh-57px)] xl:space-y-0">
+              <WorkspaceSidebar
+                profiles={profiles}
+                selectedProfileId={selectedProfileId}
+                onSelectProfile={handleSelectProfile}
+                onOpenJdModal={handleManualJdInput}
+                tailorLoading={tailorLoading}
+                onAutofill={() => {}}
+                autofillDisabled
+                autofillActive={false}
+                showBaseInfo={showBaseInfo}
+                onToggleBaseInfo={() => setShowBaseInfo((v) => !v)}
+                baseDraft={baseDraft}
+                phoneCombined={phoneCombined}
+                baseResume={baseResumeView}
+              />
+              <WorkspaceBrowser
+                selectedProfile={selectedProfile}
+                resumeTabs={resumePreviewTabs}
+                activeResumeTab={activeResumeTab}
+                activeResumeTabId={activeResumeTabId}
+                onSelectResumeTab={handleSelectResumeTab}
+                onCloseResumeTab={handleCloseResumeTab}
+                onDownloadPdf={handleDownloadTailoredPdf}
+                onRegenerate={handleRegenerateResume}
+                onReselectJd={handleManualJdInput}
+                templateName={selectedTemplate?.name || selectedProfile?.resumeTemplateName || ""}
+                templateLoading={resumeTemplatesLoading}
+                templateError={templateStatusError}
+                templateAssigned={Boolean(selectedProfile?.resumeTemplateId)}
+                tailorLoading={tailorLoading}
+                tailorError={tailorError}
+                tailorPdfLoading={tailorPdfLoading}
+                tailorPdfError={tailorPdfError}
+                activeResumePreviewHtml={activeResumePreviewHtml}
+                activeResumePreviewDoc={activeResumePreviewDoc}
+                jdDraft={jdDraft}
+                llmRawOutput={activeResumeLlmRawOutput}
+                llmMeta={activeResumeLlmMeta}
+                chatMessages={chatMessages}
+                chatInput={chatInput}
+                onChatInputChange={setChatInput}
+                chatLoading={chatLoading}
+                onSendChatMessage={handleSendChatMessage}
+                chatMessagesEndRef={chatMessagesEndRef}
+                chatInputRef={chatInputRef}
+                onGoBack={handleGoBack}
+                onGoForward={handleGoForward}
+                onRefresh={handleRefresh}
+                onGo={handleGo}
+                onCheck={handleCheck}
+                canGoBack={canGoBack}
+                canGoForward={canGoForward}
+                canCheck={canCheck}
+                loadingAction={loadingAction}
+                selectedProfileId={selectedProfileId}
+                tabs={tabsForView}
+                activeTabId={activeTabIdForView}
+                onSelectTab={handleTabSelect}
+                onAddTab={handleAddTab}
+                onCloseTab={handleCloseTab}
+                onDuplicateTab={handleDuplicateTab}
+                tabType={tabType}
+                onTabTypeChange={handleTabTypeChange}
+                isNavigating={loadingAction === "go" && loadingTabId === activeTabId}
+                url={effectiveUrl}
+                onUrlChange={handleUrlChange}
+                navigationStarted={navigationStarted}
+                isElectron={isElectron}
+                browserSrc={browserSrc}
+                setWebviewRef={setWebviewRef}
+                setWebviewRefForTab={setWebviewRefForTab}
+                webviewPartition={webviewPartition}
+                autofillTabIds={autofillTabIds}
+              />
+            </div>
+          ) : (
+            <div />
+          )}
+
+        </div>
+        <JdPreviewModal
+          open={jdPreviewOpen}
+          onClose={() => setJdPreviewOpen(false)}
+          onCancel={handleCancelJd}
+          onConfirm={handleConfirmJd}
+          jdDraft={jdDraft}
+          onJdDraftChange={setJdDraft}
+          jdCaptureError={jdCaptureError}
+          experienceLabels={workExperienceLabels}
+          baseResumeView={baseResumeView}
+          bulletCountByCompany={bulletCountByCompany}
+          onBulletCountChange={setBulletCountByCompany}
+          tailorLoading={tailorLoading}
+        />
+      </main>
+    </>
+  );
+}
+

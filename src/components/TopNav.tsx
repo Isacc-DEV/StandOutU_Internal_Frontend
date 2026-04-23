@@ -3,7 +3,6 @@
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Home, Info, LayoutDashboard, Link2, Users, Calendar, Mail, CheckSquare, FileText, UserCheck, Shield, BookOpen, ChevronDown } from 'lucide-react';
 import { clearAuth } from '../lib/auth';
@@ -290,7 +289,7 @@ function NotificationBadge({
   return (
     <span
       aria-hidden="true"
-      className={`absolute flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white shadow-sm ring-2 ring-[#0b1020] ${className || ''}`}
+      className={`absolute flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white shadow-sm ring-2 ring-white ${className || ''}`}
     >
       {formatNotificationCount(count)}
     </span>
@@ -315,7 +314,7 @@ function NavItem({
     <Link
       href={href}
       className={`relative flex items-center gap-2 rounded-full px-3 py-2 text-sm transition ${
-        active ? 'bg-white/10 text-white' : 'text-slate-200 hover:text-white'
+        active ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
       }`}
     >
       {Icon && <Icon className="h-4 w-4" />}
@@ -398,7 +397,7 @@ function NavGroup({
           setOpenMenu(null);
         }}
         className={`flex items-center gap-1 rounded-full px-3 py-2 text-sm transition ${
-          isOpen ? 'bg-white/10 text-white' : 'text-slate-200 hover:text-white hover:bg-white/5'
+          isOpen ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
         }`}
       >
         {Icon ? <Icon className="h-4 w-4" /> : null}
@@ -407,7 +406,7 @@ function NavGroup({
       </Link>
       {isOpen ? (
         <div
-          className="absolute left-0 top-full mt-2 min-w-[180px] rounded-xl border border-white/10 bg-[#020618]/70 backdrop-blur py-2 shadow-xl"
+          className="absolute left-0 top-full mt-2 min-w-[180px] rounded-2xl border border-slate-200 bg-white/95 py-2 shadow-[0_24px_60px_-34px_rgba(15,23,42,0.26)] backdrop-blur"
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
@@ -419,7 +418,7 @@ function NavGroup({
                 href={item.href}
                 onClick={item.onClick}
                 className={`flex items-center gap-2 px-3 py-2 text-sm transition ${
-                  item.active ? 'bg-white/10 text-white' : 'text-slate-200 hover:bg-white/5 hover:text-white'
+                  item.active ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 {Icon ? <Icon className="h-4 w-4" /> : null}
@@ -449,8 +448,6 @@ export default function TopNav() {
   const reportsActive =
     pathname.startsWith('/reports') || pathname.startsWith('/admin/reports');
   const [navNotifications, setNavNotifications] = useState({ ...emptyNotifications });
-  const avatarUrl = user?.avatarUrl?.trim();
-  const hasAvatar = Boolean(avatarUrl) && avatarUrl?.toLowerCase() !== 'nope';
   const initials = getInitials(user?.userName);
   const totalNotifications = Object.values(navNotifications).reduce((sum, value) => sum + value, 0);
   const hasNotifications = totalNotifications > 0;
@@ -617,18 +614,17 @@ export default function TopNav() {
   }, [token, user]);
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-[1000] w-full border-b border-white/5 bg-[#020618] backdrop-blur">
+    <header className="fixed top-0 left-0 right-0 z-[1000] w-full border-b border-slate-200/80 bg-white/88 backdrop-blur">
       <div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between px-4 py-3 text-sm">
         <div className="flex items-center">
-          <Link href="/" className="flex items-center">
-            <Image 
-              src="/logo.svg" 
-              alt="StandOutU Logo" 
-              width={120}
-              height={32}
-              className="h-8 w-auto"
-              priority
-            />
+          <Link href="/" className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold text-white shadow-sm">
+              SU
+            </span>
+            <span className="flex flex-col">
+              <span className="text-sm font-semibold tracking-tight text-slate-950">StandOutU</span>
+              <span className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Internal Workspace</span>
+            </span>
           </Link>
         </div>
         <nav className="flex items-center gap-2">
@@ -646,7 +642,7 @@ export default function TopNav() {
                     label: 'About',
                     icon: Info,
                     active: false,
-                    onClick: (e) => {
+                    onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
                       e.preventDefault();
                       const aboutSection = document.getElementById('about');
                       if (aboutSection) {
@@ -746,7 +742,7 @@ export default function TopNav() {
                   }
                 }}
                 aria-label="Open notifications inbox"
-                className="relative flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
               >
                 <svg
                   aria-hidden="true"
@@ -767,17 +763,17 @@ export default function TopNav() {
                 )}
               </button>
               {inboxOpen && (
-                <div className="absolute right-10 top-full z-50 mt-2 w-80 rounded-2xl border border-white/10 bg-[#181D2C] p-3 text-xs text-white shadow-2xl">
-                  <div className="mb-2 text-[11px] uppercase tracking-[0.2em] text-slate-300">
+                <div className="absolute right-10 top-full z-50 mt-2 w-80 rounded-3xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-[0_28px_70px_-40px_rgba(15,23,42,0.32)]">
+                  <div className="mb-2 text-[11px] uppercase tracking-[0.2em] text-slate-500">
                     Notifications
                   </div>
                   {inboxLoading ? (
-                    <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-300">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
                       Loading notifications...
                     </div>
                   ) : null}
                   {!inboxLoading && inboxItems.length === 0 ? (
-                    <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-300">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
                       No new notifications.
                     </div>
                   ) : null}
@@ -792,10 +788,10 @@ export default function TopNav() {
                           }
                           setInboxOpen(false);
                         }}
-                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-slate-100 transition hover:border-white/20 hover:bg-white/10"
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-slate-700 transition hover:border-slate-300 hover:bg-white"
                       >
-                        <div className="text-sm font-semibold text-white">{item.message}</div>
-                        <div className="mt-1 text-[10px] uppercase tracking-[0.2em] text-slate-400">
+                        <div className="text-sm font-semibold text-slate-900">{item.message}</div>
+                        <div className="mt-1 text-[10px] uppercase tracking-[0.2em] text-slate-500">
                           {item.kind === 'community'
                             ? 'Community'
                             : item.kind === 'report'
@@ -810,25 +806,11 @@ export default function TopNav() {
               )}
               <Link
                 href="/profile"
-                className="relative flex items-center rounded-full bg-white/10 p-1 text-xs text-white transition hover:bg-white/20"
+                className="relative flex items-center rounded-full border border-slate-200 bg-white p-1 text-xs text-slate-900 transition hover:border-slate-300 hover:bg-slate-50"
               >
                 <span className="relative flex h-7 w-7 items-center justify-center">
-                  <span className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-white/15 text-[9px] font-semibold text-white">
-                    {hasAvatar ? (
-                      (avatarUrl.startsWith('data:') || avatarUrl.startsWith('blob:')) ? (
-                        <img src={avatarUrl} alt={`${user.userName} avatar`} className="h-full w-full object-cover" />
-                      ) : (
-                        <Image
-                          src={avatarUrl}
-                          alt={`${user.userName} avatar`}
-                          fill
-                          className="object-cover"
-                          unoptimized
-                        />
-                      )
-                    ) : (
-                      initials
-                    )}
+                  <span className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-slate-950 text-[9px] font-semibold text-white">
+                    {initials}
                   </span>
                 </span>
                 {hasNotifications && (
@@ -839,7 +821,7 @@ export default function TopNav() {
                 type="button"
                 onClick={signOut}
                 aria-label="Log out"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
               >
                 <LogOut className="h-4 w-4" />
               </button>
@@ -847,7 +829,7 @@ export default function TopNav() {
           ) : (
             <Link
               href="/auth"
-              className="rounded-full bg-[#6366f1] px-4 py-2 text-xs font-semibold text-[#0b1224] shadow-[0_10px_30px_-18px_rgba(99,102,241,0.8)] hover:brightness-110"
+              className="rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-[0_16px_34px_-24px_rgba(15,23,42,0.48)] transition hover:bg-slate-800"
             >
               Sign in
             </Link>

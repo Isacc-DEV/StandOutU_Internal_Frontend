@@ -698,11 +698,26 @@ export class FieldCollector {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
   
-  private log(_message: string, ..._args: any[]) {
-
+  private log(message: string, ...args: unknown[]) {
+    void message
+    void args
   }
   
-  private warn(_message: string, ..._args: any[]) {}
+  private warn(message: string, ...args: unknown[]) {
+    void message
+    void args
+  }
+
+  private isParsableFormElement(
+    element: HTMLElement
+  ): element is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement {
+    return (
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLTextAreaElement ||
+      element instanceof HTMLSelectElement ||
+      element instanceof HTMLButtonElement
+    )
+  }
   
   async collectAllFormFields(): Promise<FormField[]> {
     const selector = this.joinSelectors(this.selectors.fieldCollector.formFields)
@@ -720,6 +735,14 @@ export class FieldCollector {
           `Skipping element (captcha/hidden):`,
           element.getAttribute('id') || element.getAttribute('name') || element.tagName
         )
+        continue
+      }
+
+      if (!this.isParsableFormElement(element)) {
+        logWithData(`Skipping unsupported element:`, {
+          id: element.getAttribute('id') || element.getAttribute('name') || element.tagName,
+          tag: element.tagName
+        })
         continue
       }
       

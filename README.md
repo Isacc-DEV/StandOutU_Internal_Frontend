@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StandOutU Internal Frontend
 
-## Getting Started
+## Development
 
-First, run the development server:
+1. Copy `.env.local.example` to `.env.local`.
+2. Set the frontend URL and API settings for your environment.
+3. Run `npm run dev`.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The dev server now binds to `0.0.0.0`, so if the machine's public IP is `89.117.21.252` and `PORT=3000`, you can open:
+
+- `http://89.117.21.252:3000`
+
+## Same-host backend setup
+
+If the frontend and backend run on the same machine:
+
+- frontend: `PORT=3000`
+- backend: `PORT=4000`
+- leave `NEXT_PUBLIC_API_BASE` commented out
+- set `NEXT_PUBLIC_API_PORT=4000`
+
+The frontend will automatically call `http://<current-host>:4000`.
+
+## Explicit remote API setup
+
+If the API lives on a different host, set:
+
+```env
+NEXT_PUBLIC_API_BASE=http://your-api-host:4000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Example for `89.117.21.252`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Frontend `.env.local`:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+PORT=3000
+NEXT_PUBLIC_API_PORT=4000
+NEXTAUTH_URL=http://89.117.21.252:3000
+```
 
-## Learn More
+Backend `.env`:
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```env
+HOST=0.0.0.0
+PORT=4000
+PUBLIC_API_URL=http://89.117.21.252:4000
+FRONTEND_URL=http://89.117.21.252:3000
+CORS_ORIGINS=http://89.117.21.252:3000
+```

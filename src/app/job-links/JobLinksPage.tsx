@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Link2, BarChart3, Clock, RefreshCw, Globe, MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Link2, BarChart3, Clock, Globe, MapPin } from "lucide-react";
 import TopNav from "../../components/TopNav";
 import { useAuth } from "../../lib/useAuth";
 import { fetchCountries, fetchJobLinks } from "./api";
@@ -239,7 +239,7 @@ export default function JobLinksPage() {
 
                   <div className="mb-6 rounded-2xl bg-slate-50 p-6 text-left">
                     <h2 className="mb-3 text-sm font-semibold text-slate-900">
-                      Why can't I access this page?
+                      Why can&apos;t I access this page?
                     </h2>
                     <p className="mb-4 text-sm text-slate-600">
                       Your current role (
@@ -298,46 +298,36 @@ export default function JobLinksPage() {
         <div className="grid gap-4 min-h-screen xl:grid-cols-[280px_1fr]">
           {/* Left Sidebar */}
           <section
-            className="flex flex-col gap-2 bg-[#0b1224] text-slate-100"
-            style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
+            className="app-shell-sidebar flex flex-col gap-2"
           >
             <div className="p-4 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Job Links</p>
-                  <h1 className="text-lg font-semibold text-slate-100">Select the region</h1>
+                  <p className="app-shell-kicker text-[11px] uppercase tracking-[0.26em]">Job Links</p>
+                  <h1 className="app-shell-title text-lg font-semibold">Select the region</h1>
                 </div>
               </div>
               <div className="space-y-1">
                 <button
                   onClick={() => setSelectedCountryId("all")}
-                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                    selectedCountryId === "all"
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
-                  }`}
+                  data-active={selectedCountryId === "all"}
+                  className="app-shell-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all"
                 >
                   <Globe className="w-5 h-5" />
                   <span>All</span>
                 </button>
                 <button
                   onClick={() => setSelectedCountryId("eu")}
-                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                    selectedCountryId === "eu"
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
-                  }`}
+                  data-active={selectedCountryId === "eu"}
+                  className="app-shell-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all"
                 >
                   <MapPin className="w-5 h-5" />
                   <span>EU</span>
                 </button>
                 <button
                   onClick={() => setSelectedCountryId("us")}
-                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                    selectedCountryId === "us"
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
-                  }`}
+                  data-active={selectedCountryId === "us"}
+                  className="app-shell-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all"
                 >
                   <MapPin className="w-5 h-5" />
                   <span>US</span>

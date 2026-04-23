@@ -69,7 +69,7 @@ export class DomainEngine {
   }
 
   async decideEngineMode(manualEngineMode: EngineMode | undefined): Promise<EngineMode> {
-    if (!manualEngineMode && manualEngineMode !== "common" && manualEngineMode !== undefined) {
+    if (manualEngineMode !== undefined) {
       return manualEngineMode
     }
 
@@ -86,10 +86,10 @@ export class DomainEngine {
     }
   }
   
-  async autofillDomainPage(manualEngineMode: "greenhouse" | "workday" | "common" | undefined): Promise<FillResult & { aiQuestionsHandled: number }> {
+  async autofillDomainPage(manualEngineMode: "greenhouse" | "workday" | "common" | undefined): Promise<FillResult & { aiQuestionsHandled: number; engineMode: EngineMode }> {
     if (!this.profile) {
       logWithData('start: missing profile')
-      return { filledCount: 0, totalFields: 0, unmatchedCount: 0, aiQuestionsHandled: 0 }
+      return { filledCount: 0, totalFields: 0, unmatchedCount: 0, aiQuestionsHandled: 0, engineMode: 'common' }
     }
 
     const engineMode = await this.decideEngineMode(manualEngineMode)
@@ -154,7 +154,8 @@ export class DomainEngine {
     
     return {
       ...totalResult,
-      aiQuestionsHandled: customResult.aiQuestionsHandled || 0
+      aiQuestionsHandled: customResult.aiQuestionsHandled || 0,
+      engineMode
     }
   }
   

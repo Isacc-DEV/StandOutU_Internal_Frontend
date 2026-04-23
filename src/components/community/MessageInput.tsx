@@ -1,9 +1,7 @@
-import { ChangeEvent, useRef, useState, useEffect } from 'react';
-import { Save, XCircle } from 'lucide-react';
-import Image from 'next/image';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { FileText, LoaderCircle, Paperclip, Save, Smile, X, XCircle } from 'lucide-react';
 import type { CommunityMessage } from './types';
-import { cn } from './utils';
-import { EmojiPicker, parseEmojiShortcuts, getEmojiPreview } from './EmojiPicker';
+import { EmojiPicker, getEmojiPreview, parseEmojiShortcuts } from './EmojiPicker';
 
 interface MessageInputProps {
   draftMessage: string;
@@ -61,16 +59,15 @@ export function MessageInput({
   const handleDraftChange = editingMessage ? onEditDraftChange : onDraftChange;
 
   useEffect(() => {
-    const preview = getEmojiPreview(currentDraft);
-    setEmojiPreview(preview);
+    setEmojiPreview(getEmojiPreview(currentDraft));
   }, [currentDraft]);
 
   const handleEmojiSelect = (emoji: string) => {
     handleDraftChange(currentDraft + emoji);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
     handleDraftChange(value);
     if (!editingMessage) {
       onTyping();
@@ -80,7 +77,7 @@ export function MessageInput({
   const handleSendClick = () => {
     const processedMessage = parseEmojiShortcuts(currentDraft);
     handleDraftChange(processedMessage);
-    setTimeout(() => {
+    window.setTimeout(() => {
       if (editingMessage) {
         onEditSave();
       } else {
@@ -91,29 +88,30 @@ export function MessageInput({
 
   return (
     <div className="border-t border-slate-100 px-6 py-4">
-      {replyingTo && (
+      {replyingTo ? (
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
           <div className="flex-1">
             <div className="font-semibold">Replying to {replyingTo.senderName || 'User'}</div>
             <div className="truncate text-slate-600">{replyingTo.body}</div>
           </div>
-          <button onClick={onCancelReply} className="text-slate-500 hover:text-slate-700">
-            ✕
+          <button onClick={onCancelReply} className="text-slate-500 hover:text-slate-700" aria-label="Cancel reply">
+            <X className="h-4 w-4" />
           </button>
         </div>
-      )}
-      {editingMessage && (
+      ) : null}
+
+      {editingMessage ? (
         <div className="mb-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
           <div className="mb-1 text-xs font-semibold text-blue-900">Editing message</div>
           <input
             value={editDraft}
-            onChange={(e) => onEditDraftChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
+            onChange={(event) => onEditDraftChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
                 onEditSave();
               }
-              if (e.key === 'Escape') {
+              if (event.key === 'Escape') {
                 onCancelEdit();
               }
             }}
@@ -121,66 +119,55 @@ export function MessageInput({
           />
           <div className="mt-1 flex gap-2">
             <button onClick={onEditSave} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-              <Save className="w-3 h-3" />
+              <Save className="h-3 w-3" />
               Save
             </button>
             <button
               onClick={onCancelEdit}
               className="flex items-center gap-1 text-xs text-slate-600 hover:underline"
             >
-              <XCircle className="w-3 h-3 text-slate-600" />
+              <XCircle className="h-3 w-3 text-slate-600" />
               Cancel
             </button>
           </div>
         </div>
-      )}
-      {selectedFiles.length > 0 && (
+      ) : null}
+
+      {selectedFiles.length > 0 ? (
         <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="mb-2 text-xs font-semibold text-slate-700">
             {selectedFiles.length} file(s) selected
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {selectedFiles.map((file, idx) => (
-              <div key={idx} className="relative flex-shrink-0">
-                {file.type.startsWith('image/') && previewUrls[idx] ? (
-                  (previewUrls[idx].startsWith('data:') || previewUrls[idx].startsWith('blob:')) ? (
-                    <img
-                      src={previewUrls[idx]}
-                      alt={file.name}
-                      className="h-20 w-20 rounded-lg object-cover border border-slate-200"
-                    />
-                  ) : (
-                    <div className="relative h-20 w-20 rounded-lg border border-slate-200 overflow-hidden">
-                      <Image
-                        src={previewUrls[idx]}
-                        alt={file.name}
-                        fill
-                        className="object-cover"
-                        unoptimized
-                      />
-                    </div>
-                  )
-                ) : (
-                  <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 bg-white">
-                    <div className="text-center">
-                      <div className="text-2xl">📄</div>
-                      <div className="text-[9px] text-slate-500 truncate w-16 px-1">
-                        {file.name}
-                      </div>
-                    </div>
+          <div className="space-y-2 pb-2">
+            {selectedFiles.map((file, index) => (
+              <div
+                key={`${file.name}-${index}`}
+                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-900">{file.name}</div>
+                  <div className="text-xs text-slate-500">
+                    {file.type.startsWith('image/') ? 'Image attachment' : 'File attachment'}
+                    {previewUrls[index] ? ' ready' : ''}
                   </div>
-                )}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {(file.size / 1024).toFixed(1)} KB
+                </div>
               </div>
             ))}
           </div>
-          {uploading && (
+          {uploading ? (
             <div className="mb-2 h-2 rounded-full bg-slate-200">
               <div
                 className="h-2 rounded-full bg-blue-500 transition-all"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
-          )}
+          ) : null}
           <button
             onClick={onClearFiles}
             className="mt-1 text-xs text-slate-600 hover:underline"
@@ -188,8 +175,9 @@ export function MessageInput({
             Clear all
           </button>
         </div>
-      )}
-      <div className="flex items-center gap-3 relative">
+      ) : null}
+
+      <div className="relative flex items-center gap-3">
         <input
           ref={fileInputRef}
           type="file"
@@ -203,51 +191,51 @@ export function MessageInput({
           className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
           title="Attach file"
         >
-          📎
+          <Paperclip className="h-4 w-4" />
         </button>
         <button
           ref={emojiButtonRef}
-          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+          onClick={() => setShowEmojiPicker((prev) => !prev)}
           disabled={inputDisabled}
           className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
           title="Add emoji"
         >
-          😊
+          <Smile className="h-4 w-4" />
         </button>
-        {showEmojiPicker && (
+        {showEmojiPicker ? (
           <EmojiPicker
             onSelect={handleEmojiSelect}
             onClose={() => setShowEmojiPicker(false)}
             buttonRef={emojiButtonRef}
           />
-        )}
+        ) : null}
         <div className="relative flex-1">
           <input
             value={currentDraft}
             onChange={handleInputChange}
             placeholder={activeThreadId ? `Message ${activeLabel}` : 'Select a thread to message'}
             disabled={inputDisabled}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
                 handleSendClick();
               }
             }}
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none ring-1 ring-transparent focus:ring-slate-300 disabled:bg-slate-100"
           />
-          {emojiPreview && (
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 text-2xl pointer-events-none">
+          {emojiPreview ? (
+            <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xl">
               {emojiPreview.emoji}
             </div>
-          )}
+          ) : null}
         </div>
         <button
           onClick={handleSendClick}
           disabled={inputDisabled || (!currentDraft.trim() && selectedFiles.length === 0)}
-          className="rounded-2xl bg-[var(--community-accent)] px-4 py-3 text-xs font-semibold text-[var(--community-ink)] shadow-[0_10px_25px_-16px_rgba(99,102,241,0.8)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 min-w-[80px] flex items-center justify-center"
+          className="flex min-w-[80px] items-center justify-center rounded-2xl bg-[var(--community-accent)] px-4 py-3 text-xs font-semibold text-[var(--community-ink)] shadow-[0_10px_25px_-16px_rgba(99,102,241,0.8)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {sending || uploading ? (
-            <span className="inline-block animate-spin">⏳</span>
+            <LoaderCircle className="h-4 w-4 animate-spin" />
           ) : editingMessage ? (
             'Save'
           ) : (

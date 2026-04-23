@@ -46,6 +46,10 @@ export default function AuthPage() {
   };
 
   useEffect(() => {
+    void router.prefetch("/workspace");
+  }, [router]);
+
+  useEffect(() => {
     const delays = [0, 150, 500, 1000];
     const timers = delays.map((delay) =>
       window.setTimeout(() => {
@@ -117,7 +121,7 @@ export default function AuthPage() {
       const { user, token } = res as { user: ClientUser; token?: string };
       if (user && token) {
         saveAuth(user, token);
-        router.replace("/");
+        router.replace("/workspace");
       }
     } catch (err) {
       console.error(err);

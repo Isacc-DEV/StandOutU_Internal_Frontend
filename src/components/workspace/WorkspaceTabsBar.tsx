@@ -1,6 +1,5 @@
 import { Check, Globe, Plus, Settings, X } from "lucide-react";
-import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 
 type WorkspaceTab = {
@@ -26,12 +25,9 @@ const getTabMeta = (url: string) => {
     const host = parsed.hostname.replace(/^www\./i, "");
     const pathChunk = parsed.pathname.split("/").filter(Boolean).pop();
     const title = pathChunk ? `${host} / ${decodeURIComponent(pathChunk)}` : host;
-    const favicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
-      parsed.hostname
-    )}&sz=64`;
-    return { title, favicon };
+    return { title };
   } catch {
-    return { title: url || "New Tab", favicon: "" };
+    return { title: url || "New Tab" };
   }
 };
 
@@ -63,11 +59,6 @@ export default function WorkspaceTabsBar({
     setMenuState({ tabId, x: event.clientX, y: event.clientY });
   };
   const [settingsOpen, setSettingsOpen] = useState(false);
-  useEffect(() => {
-    if (tabType !== "links") {
-      setMenuState(null);
-    }
-  }, [tabType]);
   if (!tabs.length) {
     return (
       <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-100 px-3 py-2">
@@ -133,9 +124,7 @@ export default function WorkspaceTabsBar({
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
-          const meta = tab.title
-            ? { title: tab.title, favicon: "" }
-            : getTabMeta(tab.url ?? "");
+          const meta = tab.title ? { title: tab.title } : getTabMeta(tab.url ?? "");
           return (
             <button
               key={tab.id}
@@ -157,19 +146,7 @@ export default function WorkspaceTabsBar({
               }`}
               title={tab.title || tab.url || ""}
             >
-              {meta.favicon ? (
-                <Image
-                  src={meta.favicon}
-                  alt=""
-                  width={16}
-                  height={16}
-                  className="h-4 w-4 min-h-4 min-w-4 rounded-sm"
-                  loading="lazy"
-                  unoptimized
-                />
-              ) : (
-                <Globe className="h-4 w-4 min-h-4 min-w-4 text-slate-400" />
-              )}
+              <Globe className="h-4 w-4 min-h-4 min-w-4 text-slate-400" />
               <span className="truncate text-left flex-1">{meta.title}</span>
               {tabType === "links" ? (
                 <span
@@ -241,7 +218,7 @@ export default function WorkspaceTabsBar({
           </div>
         ) : null}
       </div>
-      {menuState && menuTab ? (
+      {tabType === "links" && menuState && menuTab ? (
         <div
           className="fixed inset-0 z-50"
           onClick={handleCloseMenu}

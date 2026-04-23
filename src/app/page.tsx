@@ -1,52 +1,129 @@
 'use client';
-import Link from "next/link";
-import Image from "next/image";
-import TopNav from "../components/TopNav";
-import { FileText, Sparkles, LayoutDashboard, Link2, Users, Calendar, Target, Eye, Heart, Mail, MessageCircle, Phone, Linkedin } from "lucide-react";
-import { useState, useEffect } from "react";
-import { handleError } from "../lib/errorHandler";
 
-const features = [
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import {
+  ArrowRight,
+  BadgeCheck,
+  BriefcaseBusiness,
+  Calendar,
+  Clock3,
+  FileText,
+  LayoutDashboard,
+  Mail,
+  MessageCircle,
+  Phone,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Users,
+} from 'lucide-react';
+import TopNav from '../components/TopNav';
+import { handleError } from '../lib/errorHandler';
+
+const stats = [
+  { value: '6', label: 'Core workflows unified' },
+  { value: '1', label: 'Clean operational workspace' },
+  { value: '24/7', label: 'Always-on team visibility' },
+];
+
+const featureGroups = [
   {
     icon: FileText,
-    title: "Resume Tailoring & Analysis",
-    description: "AI-powered resume analysis and customization for each job application, ensuring your resume highlights the most relevant skills and experience.",
-    image: "/images/tailor-resume-image.png",
+    title: 'Resume Tailoring',
+    description:
+      'Generate role-specific resumes with structured guidance, cleaner templates, and faster revision cycles.',
   },
   {
     icon: Sparkles,
-    title: "Job Application Autofill",
-    description: "Intelligent form autofill that understands job requirements and automatically completes application forms with precision and accuracy.",
-    image: "/images/autofill-application_image.png",
+    title: 'Application Autofill',
+    description:
+      'Reduce repetitive form work with a focused autofill flow built for speed, consistency, and fewer manual errors.',
   },
   {
     icon: LayoutDashboard,
-    title: "Internal Management",
-    description: "Keep tasks, reports, schedules, and team messages organized in one place for effective internal operations.",
-    image: "/images/hero-background3.png",
+    title: 'Operational Oversight',
+    description:
+      'Keep reports, tasks, applications, and account activity organized in a single internal workspace.',
   },
   {
-    icon: Link2,
-    title: "Job Links Tracking",
-    description: "Organize and track job opportunities from multiple sources, with intelligent filtering and status management capabilities.",
-    image: "/images/joblink-scratch-image.png",
+    icon: BriefcaseBusiness,
+    title: 'Job Link Tracking',
+    description:
+      'Review fresh opportunities, segment by region, and move directly into the application workflow.',
   },
   {
     icon: Users,
-    title: "Community Features",
-    description: "Connect with other job seekers, share insights, and collaborate on your job search journey through our community platform.",
-    image: "/images/community-feature-image.png",
+    title: 'Team Collaboration',
+    description:
+      'Coordinate across managers, bidders, and support teams with shared visibility and cleaner communication loops.',
   },
   {
     icon: Calendar,
-    title: "Calendar Integration",
-    description: "Sync your interview schedules and important dates with your calendar, keeping your job search organized and on track.",
-    image: "/images/calendar-integration-image.png",
+    title: 'Calendar Coordination',
+    description:
+      'Track interviews and planning windows with connected mailbox and scheduling workflows.',
   },
 ];
 
+const workflowSteps = [
+  {
+    title: 'Prepare',
+    description: 'Select the right profile, review job context, and generate the material needed to move quickly.',
+  },
+  {
+    title: 'Execute',
+    description: 'Fill applications, manage related tasks, and keep activity aligned without switching between tools.',
+  },
+  {
+    title: 'Review',
+    description: 'Follow reports, status signals, and communication threads from one clear internal system.',
+  },
+];
+
+const valuePillars = [
+  {
+    icon: Target,
+    title: 'Clarity First',
+    description: 'Every screen should help the team decide faster and work with less friction.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Professional by Default',
+    description: 'The product should feel dependable, structured, and appropriate for real internal operations.',
+  },
+  {
+    icon: BadgeCheck,
+    title: 'Useful Automation',
+    description: 'Automation should reduce effort while staying transparent and easy to trust.',
+  },
+];
+
+const teamMembers = [
+  { name: 'Sam', role: 'Bidding Manager' },
+  { name: 'Sabeela', role: 'HR Manager' },
+  { name: 'Amano Jun', role: 'Frontend Developer and UI/UX Designer' },
+  { name: 'Rohail Aman', role: 'CTO and Co-Founder' },
+  { name: 'Isacc Wang', role: 'CEO and Founder' },
+  { name: 'James Wang', role: 'Lead Engineer and Co-Founder' },
+  { name: 'Muneer', role: 'Account Manager' },
+  { name: 'Jolain', role: 'Marketing Manager' },
+  { name: 'Aftab', role: 'Business Developer' },
+];
+
+function getInitials(name: string) {
+  return (
+    name
+      .split(' ')
+      .map((part) => part.trim()[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() || 'SU'
+  );
+}
+
 export default function Page() {
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -54,109 +131,155 @@ export default function Page() {
     message: '',
   });
   const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
-  
-  const backgroundImages = [
-    '/images/hero-background1.png',
-    '/images/hero-background2.png',
-    '/images/hero-background3.png',
-  ];
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % backgroundImages.length);
-    }, 5000); // Change image every 5 seconds
-
-    return () => clearInterval(interval);
-  }, [backgroundImages.length]);
-
-  useEffect(() => {
-    // Handle hash navigation on page load
-    if (window.location.hash === '#about') {
-      setTimeout(() => {
-        const aboutSection = document.getElementById('about');
-        if (aboutSection) {
-          aboutSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
-    }
+    if (window.location.hash !== '#about') return;
+    window.setTimeout(() => {
+      const aboutSection = document.getElementById('about');
+      if (aboutSection) {
+        aboutSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
   }, []);
 
   return (
-    <main className="min-h-screen bg-[#0b1224] text-[#e9eef7]">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#eef4f8_45%,#ffffff_100%)] text-slate-900">
       <TopNav />
       <div className="w-full pt-[57px]">
-        {/* Hero Section */}
-        <section className="relative overflow-hidden min-h-[600px] bg-[#0b1224]">
-          {/* Animated Background Images */}
-          <div className="absolute inset-0 z-0 w-full h-full">
-            {backgroundImages.map((image, index) => (
-              <div
-                key={index}
-                className={`absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out ${
-                  index === currentImageIndex ? 'opacity-100 z-10' : 'opacity-0 z-0'
-                }`}
-              >
-                <Image
-                  src={image}
-                  alt=""
-                  fill
-                  className="object-cover"
-                  priority={index === 0}
-                  unoptimized
-                />
-              </div>
-            ))}
-            {/* Overlay for better text readability */}
-            <div className="absolute inset-0 bg-[#0b1224]/70 z-10" />
-          </div>
-          
-          <div className="relative z-30 mx-auto max-w-screen-2xl px-4 py-24 sm:py-32 min-h-[600px] flex items-center justify-center w-full">
-            <div className="flex flex-col items-center text-center w-full">
-              <div className="space-y-6">
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-[11px] uppercase tracking-[0.28em] text-slate-300">
-                  SmartWork Platform
+        <section className="relative overflow-hidden border-b border-slate-200/70">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_38%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.12),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.98))]" />
+          <div className="absolute left-10 top-16 h-40 w-40 rounded-full bg-sky-100/70 blur-3xl" />
+          <div className="absolute right-10 top-20 h-44 w-44 rounded-full bg-emerald-100/70 blur-3xl" />
+          <div className="relative mx-auto grid max-w-screen-2xl gap-12 px-4 py-20 sm:px-6 sm:py-24 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:px-8">
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-600 shadow-sm">
+                  StandOutU Internal
                 </span>
-                <h1 className="text-5xl font-bold leading-tight tracking-tight sm:text-6xl md:text-7xl">
-                  Work smarter from a single place.
+                <h1 className="max-w-3xl text-5xl font-semibold tracking-tight text-slate-950 sm:text-6xl">
+                  A cleaner workspace for applications, reporting, and team execution.
                 </h1>
-                <p className="mx-auto max-w-2xl text-lg text-slate-300 sm:text-xl">
-                  Generate tailored resumes with beautiful templates, auto-fill applications in one click, and manage schedules and messages effortlessly.
+                <p className="max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
+                  SmartWork brings resume preparation, autofill, task coordination, reporting, and communication
+                  into one professional internal system with a lighter, more focused interface.
                 </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href="/auth"
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Open Workspace
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <a
+                  href="#about"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                >
+                  Learn More
+                </a>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                {stats.map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-3xl border border-slate-200/80 bg-white/85 px-5 py-5 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.32)] backdrop-blur"
+                  >
+                    <div className="text-3xl font-semibold text-slate-950">{item.value}</div>
+                    <div className="mt-2 text-sm text-slate-500">{item.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200/80 bg-white/90 p-6 shadow-[0_32px_90px_-54px_rgba(15,23,42,0.4)] backdrop-blur sm:p-8">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                    Workflow Snapshot
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold text-slate-950">Built for internal teams</h2>
+                </div>
+                <div className="rounded-2xl bg-slate-950 p-3 text-white">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+              </div>
+
+              <div className="mt-8 space-y-4">
+                {[
+                  {
+                    label: 'Resume and autofill',
+                    detail: 'Generate tailored material, then move directly into application execution.',
+                  },
+                  {
+                    label: 'Tasks and reports',
+                    detail: 'Track ownership, progress, and daily visibility without context switching.',
+                  },
+                  {
+                    label: 'Mail and calendar',
+                    detail: 'Keep communication and scheduling aligned with operational work.',
+                  },
+                ].map((item, index) => (
+                  <div
+                    key={item.label}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-sm font-semibold text-slate-700 shadow-sm">
+                        0{index + 1}
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">{item.label}</div>
+                        <div className="mt-1 text-sm leading-6 text-slate-500">{item.detail}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 rounded-2xl bg-slate-950 px-5 py-4 text-white">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">Cleaner UI direction</div>
+                    <div className="mt-1 text-sm text-slate-300">
+                      Text, iconography, spacing, and structure now lead the experience instead of image-heavy panels.
+                    </div>
+                  </div>
+                  <BadgeCheck className="h-5 w-5 shrink-0 text-emerald-300" />
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Features Section */}
-        <section className="relative border-t border-white/5 bg-[#0f162b] py-24">
-          <div className="mx-auto max-w-screen-2xl px-4">
-            <div className="mb-16 text-center">
-              <h2 className="text-3xl font-bold sm:text-4xl">Powerful Features</h2>
-              <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-300">
-                Everything you need to streamline your job application process and stand out from the crowd.
+        <section className="py-20 sm:py-24">
+          <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-12 max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Capabilities</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                Everything the team needs, organized with more discipline.
+              </h2>
+              <p className="mt-4 text-lg leading-8 text-slate-600">
+                The platform is now positioned around clearer hierarchy, lighter surfaces, and functional components
+                that communicate quickly without decorative image clutter.
               </p>
             </div>
-            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature, index) => {
+
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {featureGroups.map((feature) => {
                 const Icon = feature.icon;
                 return (
                   <div
-                    key={index}
-                    className="group rounded-2xl border border-white/10 bg-[#111a32] p-6 transition hover:border-[#6366f1]/50 hover:shadow-[0_8px_30px_rgba(99,102,241,0.12)]"
+                    key={feature.title}
+                    className="group rounded-[1.75rem] border border-slate-200/80 bg-white/90 p-7 shadow-[0_24px_70px_-54px_rgba(15,23,42,0.34)] transition hover:-translate-y-1 hover:border-slate-300"
                   >
-                    <div className="relative mb-5 h-64 w-full overflow-hidden rounded-xl border border-white/5 bg-[#0f162b]">
-                      <Image
-                        src={feature.image}
-                        alt={feature.title}
-                        fill
-                        className="object-cover transition duration-500 group-hover:scale-105"
-                      />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                      <Icon className="h-5 w-5" />
                     </div>
-                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#6366f1]/20 text-[#6366f1] transition group-hover:bg-[#6366f1]/30">
-                      <Icon className="h-6 w-6" />
-                    </div>
-                    <h3 className="mb-2 text-xl font-semibold">{feature.title}</h3>
-                    <p className="text-slate-400 leading-relaxed">{feature.description}</p>
+                    <h3 className="mt-5 text-xl font-semibold text-slate-950">{feature.title}</h3>
+                    <p className="mt-3 text-sm leading-7 text-slate-600">{feature.description}</p>
                   </div>
                 );
               })}
@@ -164,415 +287,310 @@ export default function Page() {
           </div>
         </section>
 
-        {/* About Us Section */}
-        <section id="about" className="relative border-t border-white/5 bg-[#0b1224]">
-          {/* Hero Section */}
-          <div className="relative overflow-hidden border-b border-white/5">
-            {/* Background Image */}
-            <div className="relative inset-0 z-0 w-full h-auto">
-              <Image
-                src="/images/hero-background4.png"
-                alt="Hero background"
-                width={1920}
-                height={1080}
-                className="w-full h-auto object-cover"
-                priority
-              />
-              {/* Overlay for better text readability */}
-              <div className="absolute inset-0 bg-[#0b1224]/70 z-10" />
-            </div>
-            <div className="absolute inset-0 z-30 mx-auto max-w-screen-2xl px-4 py-24 sm:py-32 min-h-[400px] flex items-center justify-center w-full">
-              <div className="flex flex-col items-center text-center">
-                <div className="space-y-6">
-                  <h1 className="text-5xl font-bold leading-tight tracking-tight sm:text-6xl md:text-7xl">
-                    About Us
-                  </h1>
-                  <p className="mx-auto max-w-3xl text-lg text-slate-300 sm:text-xl">
-                    We're on a mission to revolutionize the job application process, making it easier, smarter, and more effective for everyone.
+        <section id="about" className="border-y border-slate-200/70 bg-white/80 py-20 sm:py-24">
+          <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+            <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-start">
+              <div className="rounded-[2rem] border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-8 shadow-[0_24px_70px_-52px_rgba(15,23,42,0.32)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Mission</p>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Reduce friction for every application workflow.</h2>
+                <div className="mt-5 space-y-4 text-base leading-8 text-slate-600">
+                  <p>
+                    StandOutU exists to help teams move through application work with more consistency, less repetition,
+                    and better internal visibility.
+                  </p>
+                  <p>
+                    Instead of depending on scattered tools, the platform brings preparation, action, and follow-up into
+                    one place so people can focus on quality decisions and cleaner execution.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-[2rem] border border-slate-200/80 bg-slate-950 p-8 text-slate-100 shadow-[0_32px_90px_-54px_rgba(15,23,42,0.48)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Vision</p>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">A professional internal platform that feels simple to operate.</h2>
+                <div className="mt-5 space-y-4 text-base leading-8 text-slate-300">
+                  <p>
+                    The goal is a workspace where reporting, communication, scheduling, and task ownership feel connected
+                    instead of fragmented.
+                  </p>
+                  <p>
+                    A lighter visual system supports that vision by making information easier to scan, easier to trust,
+                    and easier to maintain.
                   </p>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Mission & Vision Section */}
-          <div className="relative border-b border-white/5 bg-[#0f162b] py-24">
-            <div className="mx-auto max-w-screen-2xl px-4">
-              <div className="space-y-16">
-                {/* Mission Section */}
-                <div className="grid gap-8 md:grid-cols-[1fr_1fr] md:items-center">
-                  <div>
-                    <div className="mb-6 flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#6366f1]/20 text-[#6366f1]">
-                        <Target className="h-6 w-6" />
-                      </div>
-                      <h2 className="text-3xl font-bold sm:text-4xl">Our Mission</h2>
+            <div className="mt-14 grid gap-6 lg:grid-cols-3">
+              {valuePillars.map((pillar) => {
+                const Icon = pillar.icon;
+                return (
+                  <div
+                    key={pillar.title}
+                    className="rounded-[1.75rem] border border-slate-200/80 bg-white p-7 shadow-[0_24px_60px_-52px_rgba(15,23,42,0.28)]"
+                  >
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-800">
+                      <Icon className="h-5 w-5" />
                     </div>
-                    <div className="space-y-4 text-lg leading-relaxed text-slate-300">
-                      <p>
-                        Our mission is to empower job seekers with intelligent tools that streamline the application process, 
-                        eliminate repetitive tasks, and help them present their best selves to potential employers.
-                      </p>
-                      <p>
-                        We believe that everyone deserves access to sophisticated career tools that were previously available 
-                        only to a select few. By leveraging AI and automation, we're leveling the playing field and helping 
-                        talented individuals focus on what matters most: finding the right opportunities and showcasing their unique value.
-                      </p>
-                    </div>
+                    <h3 className="mt-5 text-xl font-semibold text-slate-950">{pillar.title}</h3>
+                    <p className="mt-3 text-sm leading-7 text-slate-600">{pillar.description}</p>
                   </div>
-                  <div className="relative h-64 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#111a32] md:h-80">
-                    <Image
-                      src="/images/64fd563f-a16b-4245-bc71-1f68264e6931.png"
-                      alt="Our Mission"
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                </div>
-
-                {/* Vision Section */}
-                <div className="grid gap-8 md:grid-cols-[1fr_1fr] md:items-center">
-                  <div className="relative h-64 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#111a32] md:h-80">
-                    <Image
-                      src="/images/c4ba8a6a-9c59-43ec-aa67-fddeae89febf.png"
-                      alt="Our Vision"
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                  <div>
-                    <div className="mb-6 flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#5ef3c5]/20 text-[#5ef3c5]">
-                        <Eye className="h-6 w-6" />
-                      </div>
-                      <h2 className="text-3xl font-bold sm:text-4xl">Our Vision</h2>
-                    </div>
-                    <div className="space-y-4 text-lg leading-relaxed text-slate-300">
-                      <p>
-                        We envision a future where job searching is seamless, personalized, and stress-free. A world where 
-                        technology handles the tedious parts of job applications, allowing candidates to focus on building 
-                        meaningful connections and pursuing opportunities that truly align with their goals.
-                      </p>
-                      <p>
-                        Our platform will continue to evolve, incorporating the latest advancements in AI and user experience 
-                        design to stay ahead of the curve. We're committed to being the leading platform that transforms how 
-                        people find and apply to jobs, making career advancement more accessible and efficient for everyone.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
           </div>
+        </section>
 
-          {/* Values Section */}
-          <div className="relative border-b border-white/5 bg-[#0f162b] py-24">
-            <div className="mx-auto max-w-screen-2xl px-4">
-              <div className="mb-16 text-center">
-                <h2 className="text-3xl font-bold sm:text-4xl">Our Values</h2>
-                <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-300">
-                  The principles that guide everything we do and shape our commitment to our users.
-                </p>
-              </div>
-              <div className="grid gap-8 md:grid-cols-2">
-                {[
-                  {
-                    icon: Target,
-                    title: "Innovation",
-                    description: "We continuously innovate to provide cutting-edge solutions that help job seekers succeed in their career journeys.",
-                  },
-                  {
-                    icon: Heart,
-                    title: "User-Centric",
-                    description: "Our users are at the heart of everything we do. We build features and tools that genuinely solve real problems.",
-                  },
-                  {
-                    icon: Eye,
-                    title: "Transparency",
-                    description: "We believe in clear, honest communication and transparent processes that build trust with our community.",
-                  },
-                  {
-                    icon: Users,
-                    title: "Collaboration",
-                    description: "We foster a collaborative environment where ideas flourish and everyone can contribute to making job searching better.",
-                  },
-                ].map((value, index) => {
-                  const Icon = value.icon;
-                  return (
+        <section className="py-20 sm:py-24">
+          <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+            <div className="grid gap-10 lg:grid-cols-[0.95fr_1.05fr]">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">How It Works</p>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                  A simpler path from intake to follow-up.
+                </h2>
+                <div className="mt-8 space-y-4">
+                  {workflowSteps.map((step, index) => (
                     <div
-                      key={index}
-                      className="rounded-2xl border border-white/10 bg-[#111a32] p-8 transition hover:border-white/20"
+                      key={step.title}
+                      className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 shadow-[0_24px_70px_-58px_rgba(15,23,42,0.28)]"
                     >
-                      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#6366f1]/20 text-[#6366f1]">
-                        <Icon className="h-6 w-6" />
-                      </div>
-                      <h3 className="mb-3 text-2xl font-semibold">{value.title}</h3>
-                      <p className="text-slate-400 leading-relaxed">{value.description}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Team Section */}
-          <div className="relative py-24 bg-gradient-to-b from-[#0b1224] via-[#0f162b] to-[#0b1224]">
-            <div className="mx-auto max-w-screen-2xl px-4">
-              <div className="mb-3 text-center">
-                <div className="mb-3 flex items-center justify-center gap-3">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6366f1]/30 to-[#8b5cf6]/30 text-[#6366f1] shadow-lg shadow-[#6366f1]/20">
-                    <Users className="h-7 w-7" />
-                  </div>
-                  <h2 className="text-4xl font-bold sm:text-5xl bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                    Our Team
-                  </h2>
-                </div>
-              </div>
-              <div className="overflow-x-auto overflow-y-visible py-8 pb-12 -mx-4 px-4">
-                <div className="flex gap-2 min-w-max justify-center items-start">
-                  {[
-                    {
-                      name: "Sam",
-                      role: "Bidding Manager",
-                      photo: "images/57d18289-cd19-4cb2-8c95-b84049c7c37d.png",
-                    },
-                    {
-                      name: "Sabeela",
-                      role: "HR Manager",
-                      photo: "images/d851bc17-16d0-42bf-ae37-af97d077d760.png",
-                    },
-                    {
-                      name: "Amano Jun",
-                      role: "Frontend Developer & UI/UX Designer",
-                      photo: "/images/8291bc18-10e0-14ef-ad31-ef88b01.png",
-                    },
-                    {
-                      name: "Rohail Aman",
-                      role: "CTO & Co-Founder",
-                      photo: "/images/8252b997-7e81-406a-aaf5-1bd532ffa20d.png",
-                    },
-                    {
-                      name: "Isacc Wang",
-                      role: "CEO & Founder",
-                      photo: "/images/aea7df34-be01-48a6-b385-67e0bdc6670a.png",
-                    },
-                    {
-                      name: "James Wang",
-                      role: "Lead Engineer & Co-Founder",
-                      photo: "/images/1868fb7c-134a-48b2-8853-31e32d2e7052.png",
-                    },
-                    {
-                      name: "Muneer",
-                      role: "Account Manager",
-                      photo: "images/ddd7aee4-b22c-431b-be31-81d250a0a4ee.png",
-                    },
-                    {
-                      name: "Jolain",
-                      role: "Marketing Manager",
-                      photo: "images/82abfafa-e512-453b-82d9-ec2ddebf0c3a.png",
-                    },
-                    {
-                      name: "Aftab",
-                      role: "Business Developer",
-                      photo: "images/a3fe482a-c24c-aa23-b221-77ae290fa9d33.png",
-                    }
-                  ].map((member, index) => (
-                    <div
-                      key={index}
-                      className="group flex flex-col items-center transition-all duration-300 flex-shrink-0 w-28 pt-4"
-                    >
-                      <div className="relative mb-4 flex items-center justify-center h-28">
-                        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#6366f1]/40 to-[#8b5cf6]/40 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 scale-150" />
-                        <div className="relative h-16 w-16 group-hover:h-28 group-hover:w-28 rounded-full ring-2 group-hover:ring-4 ring-white/10 group-hover:ring-[#6366f1]/50 transition-all duration-300 overflow-hidden">
-                          <Image
-                            src={member.photo}
-                            alt={member.name}
-                            fill
-                            className="object-cover rounded-full transition-all duration-300 origin-center"
-                            unoptimized
-                          />
+                      <div className="flex gap-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-slate-950">{step.title}</h3>
+                          <p className="mt-2 text-sm leading-7 text-slate-600">{step.description}</p>
                         </div>
                       </div>
-                      <h3 className="mb-1 text-base font-bold text-white group-hover:text-[#6366f1] transition-colors duration-300 text-center">
-                        {member.name}
-                      </h3>
-                      <p className="text-center text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors duration-300 leading-tight">
-                        {member.role}
-                      </p>
                     </div>
                   ))}
                 </div>
               </div>
+
+              <div className="rounded-[2rem] border border-slate-200/80 bg-white p-8 shadow-[0_32px_90px_-60px_rgba(15,23,42,0.32)]">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                    <Clock3 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Operational Focus</p>
+                    <h3 className="mt-1 text-2xl font-semibold text-slate-950">What the clean, light direction improves</h3>
+                  </div>
+                </div>
+
+                <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                  {[
+                    'Better scanability for dense information',
+                    'Less visual noise in task-oriented screens',
+                    'Stronger hierarchy between actions and content',
+                    'More professional presentation for internal use',
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-700"
+                    >
+                      {item}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-5 py-5">
+                  <div className="flex items-start gap-3">
+                    <MessageCircle className="mt-0.5 h-5 w-5 text-slate-500" />
+                    <p className="text-sm leading-7 text-slate-600">
+                      The refresh is intentionally image-free across the presentation layer so the interface feels calmer,
+                      lighter, and more durable as the product grows.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+        </section>
 
-          {/* Contact Us Section */}
-          <div className="relative border-t border-white/5 bg-[#0f162b] py-24">
-            <div className="mx-auto max-w-screen-2xl px-4">
-              {/* Header */}
-              <div className="mb-12 flex items-center justify-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#6366f1]/20 text-[#6366f1]">
-                  <MessageCircle className="h-6 w-6" />
-                </div>
-                <h2 className="text-3xl font-bold sm:text-4xl">Contact Us</h2>
+        <section className="border-y border-slate-200/70 bg-white/80 py-20 sm:py-24">
+          <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-12 flex items-center justify-between gap-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Team</p>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                  People behind the platform
+                </h2>
               </div>
-              
-              <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 lg:items-stretch">
-                {/* Left Column - Text Content */}
-                <div className="flex flex-col space-y-8">
-                  <div>
-                    <h3 className="mb-4 text-xl font-semibold text-slate-200">Get in Touch</h3>
-                    <p className="mb-4 text-base leading-relaxed text-slate-300">
-                      Have questions, feedback, or want to get in touch? We'd love to hear from you!
-                    </p>
-                    <p className="text-base leading-relaxed text-slate-400">
-                      Whether you're looking for support, have a business inquiry, or just want to say hello, 
-                      our team is here to help. Fill out the form and we'll get back to you as soon as possible.
-                    </p>
-                  </div>
-                  
-                  <div className="flex-1 space-y-4 rounded-2xl border border-white/10 bg-[#111a32] p-6">
-                    <h4 className="mb-4 text-lg font-semibold text-slate-200">Contact Information</h4>
-                    <div className="space-y-4">
-                      <a
-                        href="mailto:support@standoutu.com"
-                        className="group flex items-center gap-4 rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-[#6366f1]/50 hover:bg-white/10"
-                      >
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#6366f1]/20 text-[#6366f1] transition group-hover:bg-[#6366f1]/30">
-                          <Mail className="h-6 w-6" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Email</p>
-                          <p className="mt-1 truncate text-sm font-medium text-slate-200 group-hover:text-white">
-                            support@standoutu.com
-                          </p>
-                        </div>
-                      </a>
-                      <a
-                        href="tel:+15551234567"
-                        className="group flex items-center gap-4 rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-[#6366f1]/50 hover:bg-white/10"
-                      >
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#6366f1]/20 text-[#6366f1] transition group-hover:bg-[#6366f1]/30">
-                          <Phone className="h-6 w-6" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Phone</p>
-                          <p className="mt-1 text-sm font-medium text-slate-200 group-hover:text-white">
-                            +1 (555) 123-4567
-                          </p>
-                        </div>
-                      </a>
+              <div className="hidden rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 sm:inline-flex">
+                Profile cards, without photo imagery
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {teamMembers.map((member) => (
+                <div
+                  key={`${member.name}-${member.role}`}
+                  className="rounded-[1.5rem] border border-slate-200/80 bg-white px-5 py-5 shadow-[0_20px_60px_-52px_rgba(15,23,42,0.28)]"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">
+                      {getInitials(member.name)}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-950">{member.name}</h3>
+                      <p className="text-sm leading-6 text-slate-500">{member.role}</p>
                     </div>
                   </div>
                 </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
-                {/* Right Column - Form */}
-                <div className="flex flex-col">
-                  <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    setFormStatus('submitting');
-                    try {
-                      // Simulate form submission - replace with actual API call
-                      await new Promise((resolve) => setTimeout(resolve, 1000));
-                      setFormStatus('success');
-                      setFormData({ name: '', email: '', subject: '', message: '' });
-                      setTimeout(() => setFormStatus('idle'), 3000);
-                    } catch (err) {
-                      setFormStatus('idle');
-                      handleError(err, 'An error occurred while sending your message. Please contact the administrator.');
-                    }
-                  }}
-                  className="flex-1 space-y-6 rounded-2xl border border-white/10 bg-[#111a32] p-8 shadow-xl"
-                >
-                  <div className="grid gap-6 sm:grid-cols-2">
-                    <div>
-                      <label htmlFor="name" className="mb-2 block text-sm font-semibold text-slate-200">
-                        Name <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        id="name"
-                        required
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-slate-500 transition-all focus:border-[#6366f1] focus:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#6366f1]/30"
-                        placeholder="Your name"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="email" className="mb-2 block text-sm font-semibold text-slate-200">
-                        Email <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        type="email"
-                        id="email"
-                        required
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-slate-500 transition-all focus:border-[#6366f1] focus:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#6366f1]/30"
-                        placeholder="your.email@example.com"
-                      />
-                    </div>
-                  </div>
+        <section className="py-20 sm:py-24">
+          <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-12 max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Contact</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+                Reach the team with a clear request.
+              </h2>
+              <p className="mt-4 text-lg leading-8 text-slate-600">
+                Questions, support needs, or product feedback can all come through the same channel.
+              </p>
+            </div>
+
+            <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-[2rem] border border-slate-200/80 bg-slate-950 p-8 text-white shadow-[0_32px_90px_-54px_rgba(15,23,42,0.48)]">
+                <div className="space-y-6">
                   <div>
-                    <label htmlFor="subject" className="mb-2 block text-sm font-semibold text-slate-200">
-                      Subject <span className="text-rose-400">*</span>
-                    </label>
+                    <h3 className="text-2xl font-semibold">Get in touch</h3>
+                    <p className="mt-3 text-sm leading-7 text-slate-300">
+                      Use the contact form for product questions, operational support, or general business inquiries.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <a
+                      href="mailto:support@standoutu.com"
+                      className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 transition hover:bg-white/10"
+                    >
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
+                        <Mail className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Email</div>
+                        <div className="mt-1 text-sm font-medium text-white">support@standoutu.com</div>
+                      </div>
+                    </a>
+                    <a
+                      href="tel:+15551234567"
+                      className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 transition hover:bg-white/10"
+                    >
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white">
+                        <Phone className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Phone</div>
+                        <div className="mt-1 text-sm font-medium text-white">+1 (555) 123-4567</div>
+                      </div>
+                    </a>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-5">
+                    <div className="text-sm font-semibold text-white">What to expect</div>
+                    <p className="mt-2 text-sm leading-7 text-slate-300">
+                      Messages are reviewed for support, product feedback, and business coordination. Include enough
+                      detail to help the team respond efficiently.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <form
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  setFormStatus('submitting');
+                  try {
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                    setFormStatus('success');
+                    setFormData({ name: '', email: '', subject: '', message: '' });
+                    window.setTimeout(() => setFormStatus('idle'), 3000);
+                  } catch (err) {
+                    setFormStatus('idle');
+                    handleError(err, 'An error occurred while sending your message. Please contact the administrator.');
+                  }
+                }}
+                className="rounded-[2rem] border border-slate-200/80 bg-white p-8 shadow-[0_32px_90px_-60px_rgba(15,23,42,0.32)]"
+              >
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">
+                      Name <span className="text-rose-500">*</span>
+                    </span>
                     <input
                       type="text"
-                      id="subject"
                       required
-                      value={formData.subject}
-                      onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-slate-500 transition-all focus:border-[#6366f1] focus:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#6366f1]/30"
-                      placeholder="What's this about?"
+                      value={formData.name}
+                      onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none ring-1 ring-transparent transition focus:border-slate-300 focus:bg-white focus:ring-slate-300"
+                      placeholder="Your name"
                     />
-                  </div>
-                  <div>
-                    <label htmlFor="message" className="mb-2 block text-sm font-semibold text-slate-200">
-                      Message <span className="text-rose-400">*</span>
-                    </label>
-                    <textarea
-                      id="message"
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">
+                      Email <span className="text-rose-500">*</span>
+                    </span>
+                    <input
+                      type="email"
                       required
-                      rows={6}
-                      value={formData.message}
-                      onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                      className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-slate-500 transition-all focus:border-[#6366f1] focus:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#6366f1]/30 resize-none"
-                      placeholder="Tell us more about your inquiry..."
+                      value={formData.email}
+                      onChange={(event) => setFormData({ ...formData, email: event.target.value })}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none ring-1 ring-transparent transition focus:border-slate-300 focus:bg-white focus:ring-slate-300"
+                      placeholder="your.email@example.com"
                     />
-                  </div>
-                  {formStatus === 'success' && (
-                    <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-200">
-                      <div className="flex items-center gap-2">
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>Thank you! Your message has been sent successfully. We'll get back to you soon.</span>
-                      </div>
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={formStatus === 'submitting'}
-                    className="w-full rounded-lg bg-[#6366f1] px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#6366f1]/25 transition-all hover:bg-[#5856eb] hover:shadow-xl hover:shadow-[#6366f1]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#6366f1]"
-                  >
-                    {formStatus === 'submitting' ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Sending...
-                      </span>
-                    ) : (
-                      'Send Message'
-                    )}
-                  </button>
-                </form>
+                  </label>
                 </div>
-              </div>
+
+                <label className="mt-6 block space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">
+                    Subject <span className="text-rose-500">*</span>
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    value={formData.subject}
+                    onChange={(event) => setFormData({ ...formData, subject: event.target.value })}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none ring-1 ring-transparent transition focus:border-slate-300 focus:bg-white focus:ring-slate-300"
+                    placeholder="What is this about?"
+                  />
+                </label>
+
+                <label className="mt-6 block space-y-2">
+                  <span className="text-sm font-semibold text-slate-700">
+                    Message <span className="text-rose-500">*</span>
+                  </span>
+                  <textarea
+                    required
+                    rows={6}
+                    value={formData.message}
+                    onChange={(event) => setFormData({ ...formData, message: event.target.value })}
+                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none ring-1 ring-transparent transition focus:border-slate-300 focus:bg-white focus:ring-slate-300"
+                    placeholder="Tell us how we can help."
+                  />
+                </label>
+
+                {formStatus === 'success' ? (
+                  <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                    Thank you. Your message has been sent successfully.
+                  </div>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={formStatus === 'submitting'}
+                  className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {formStatus === 'submitting' ? 'Sending...' : 'Send Message'}
+                </button>
+              </form>
             </div>
           </div>
         </section>

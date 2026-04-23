@@ -1,5 +1,3 @@
-import Image from 'next/image';
-
 type SectionHeaderProps = {
   title: string;
   count?: number;
@@ -41,7 +39,7 @@ type AvatarBubbleProps = {
   avatarUrl?: string | null;
 };
 
-export function AvatarBubble({ name, active, avatarUrl }: AvatarBubbleProps) {
+export function AvatarBubble({ name, active }: AvatarBubbleProps) {
   const initials = name
     .split(' ')
     .map((part) => part.trim()[0])
@@ -49,33 +47,15 @@ export function AvatarBubble({ name, active, avatarUrl }: AvatarBubbleProps) {
     .slice(0, 2)
     .join('')
     .toUpperCase();
-  const cleanedAvatar = avatarUrl?.trim();
-  const hasAvatar = Boolean(cleanedAvatar) && cleanedAvatar?.toLowerCase() !== 'nope';
   return (
     <span
       className={`flex h-7 w-7 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold relative ${
-        hasAvatar
-          ? 'bg-slate-900/10'
-          : active
-            ? 'bg-[var(--community-accent)] text-[var(--community-ink)]'
-            : 'bg-slate-900 text-white'
+        active
+          ? 'bg-[var(--community-accent)] text-[var(--community-ink)]'
+          : 'bg-slate-900 text-white'
       }`}
     >
-      {hasAvatar ? (
-        (cleanedAvatar.startsWith('data:') || cleanedAvatar.startsWith('blob:')) ? (
-          <img src={cleanedAvatar} alt={`${name} avatar`} className="h-full w-full object-cover" />
-        ) : (
-          <Image
-            src={cleanedAvatar}
-            alt={`${name} avatar`}
-            fill
-            className="object-cover"
-            unoptimized
-          />
-        )
-      ) : (
-        initials || 'DM'
-      )}
+      {initials || 'DM'}
     </span>
   );
 }

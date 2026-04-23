@@ -216,6 +216,7 @@ export class DomainInputSimulator {
       }
 
       let menu: Element | null = null
+      let options: HTMLElement[] = []
 
       // Try clicking each element until dropdown appears
       for (let i = 0; i < elementsToTry.length; i++) {

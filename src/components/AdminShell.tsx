@@ -22,14 +22,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       <div className="mx-auto w-full min-h-screen pt-[57px]">
         <div className="grid gap-4 min-h-screen xl:grid-cols-[280px_1fr]">
           <section
-            className="flex flex-col gap-2 bg-[#0b1224] text-slate-100"
-            style={{ boxShadow: '0 10px 15px -3px rgba(99,102,241,0.5), -4px -1px 20px 2px #0b1224' }}
+            className="app-shell-sidebar flex flex-col gap-2"
           >
             <div className="p-4 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Admin</p>
-                  <h1 className="text-lg font-semibold text-slate-100">Administration</h1>
+                  <p className="app-shell-kicker text-[11px] uppercase tracking-[0.26em]">Admin</p>
+                  <h1 className="app-shell-title text-lg font-semibold">Administration</h1>
                 </div>
               </div>
               <div className="space-y-1">
@@ -40,11 +39,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                     <Link
                       key={link.href}
                       href={link.href}
-                      className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                        active
-                          ? 'bg-slate-700 text-white'
-                          : 'text-slate-300 hover:bg-slate-800/50 hover:text-white'
-                      }`}
+                      data-active={active}
+                      className="app-shell-link flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all"
                     >
                       <Icon className="w-5 h-5" />
                       <span>{link.label}</span>

@@ -4,9 +4,6 @@ type WorkspaceAutofillOverlayProps = {
 };
 
 const MULTI_PART_TLDS = new Set(["co.uk", "com.au", "co.nz", "co.jp"]);
-const DOMAIN_ICON_MAP: Record<string, string> = {
-  greenhouse: "/autofill/icons/greenhouse.svg",
-};
 
 const getDomainKey = (hostname: string): string | null => {
   const parts = hostname.split(".").filter(Boolean);
@@ -21,13 +18,11 @@ const getDomainKey = (hostname: string): string | null => {
   return parts[0];
 };
 
-const getIconForUrl = (url?: string): string | null => {
+const getDomainLabel = (url?: string): string | null => {
   if (!url) return null;
   try {
     const hostname = new URL(url).hostname.toLowerCase();
-    const key = getDomainKey(hostname);
-    if (!key) return null;
-    return DOMAIN_ICON_MAP[key] ?? null;
+    return getDomainKey(hostname);
   } catch {
     return null;
   }
@@ -38,7 +33,7 @@ export default function WorkspaceAutofillOverlay({
   url,
 }: WorkspaceAutofillOverlayProps) {
   if (!visible) return null;
-  const iconSrc = getIconForUrl(url);
+  const domainLabel = getDomainLabel(url);
 
   return (
     <div
@@ -48,14 +43,11 @@ export default function WorkspaceAutofillOverlay({
     >
       <div className="relative h-16 w-16">
         <div className="absolute inset-0 rounded-full border-4 border-white/40 border-t-white shadow-lg animate-spin" />
-        {iconSrc ? (
+        {domainLabel ? (
           <div className="absolute inset-0 flex items-center justify-center">
-            <img
-              src={iconSrc}
-              alt=""
-              className="h-7 w-7"
-              aria-hidden="true"
-            />
+            <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700 shadow-sm">
+              {domainLabel.slice(0, 3)}
+            </span>
           </div>
         ) : null}
       </div>

@@ -73,28 +73,28 @@ export default function WorkBookDashboardPage() {
     (Object.keys(ranges) as RangeKey[]).forEach((key) => {
       const days = ranges[key];
       const since = now - days * msInDay;
-      const counts = new Map<string, number>();
+      const counts = new Map<string, { count: number; label: string }>();
       entries.forEach((entry) => {
         const createdAt = new Date(entry.createdAt).getTime();
         if (Number.isNaN(createdAt) || createdAt < since) return;
         const id = entry.bidderUserId || "unknown";
         const label = entry.bidderName || entry.bidderEmail || "Unknown";
-        const current = counts.get(id) ?? 0;
-        counts.set(id, current + 1);
-        // store label separately
-        counts.set(`${id}__label`, label);
+        const current = counts.get(id);
+        counts.set(id, {
+          count: (current?.count ?? 0) + 1,
+          label,
+        });
       });
       let topId = "";
       let topCount = 0;
-      counts.forEach((value, keyLabel) => {
-        if (keyLabel.endsWith("__label")) return;
-        if (value > topCount) {
-          topCount = value;
-          topId = keyLabel;
+      counts.forEach((value, bidderId) => {
+        if (value.count > topCount) {
+          topCount = value.count;
+          topId = bidderId;
         }
       });
       if (topId) {
-        const label = (counts.get(`${topId}__label`) as string) || "Unknown";
+        const label = counts.get(topId)?.label || "Unknown";
         result[key] = { label, count: topCount };
       }
     });

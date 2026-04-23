@@ -13,6 +13,7 @@ export function useWorkspaceProfiles({ api, user, onProfileChange }: UseWorkspac
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("");
   const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [profilesLoading, setProfilesLoading] = useState(false);
 
   const selectedProfile = useMemo(
     () => profiles.find((p) => p.id === selectedProfileId),
@@ -36,7 +37,13 @@ export function useWorkspaceProfiles({ api, user, onProfileChange }: UseWorkspac
 
   useEffect(() => {
     const fetchForUser = async () => {
-      if (!user || user.role === "OBSERVER") return;
+      if (!user || user.role === "OBSERVER") {
+        setProfiles([]);
+        setSelectedProfileId("");
+        setProfilesLoading(false);
+        return;
+      }
+      setProfilesLoading(true);
       try {
         const profs = await api<Profile[]>(`/profiles`);
         const visible =
@@ -59,6 +66,8 @@ export function useWorkspaceProfiles({ api, user, onProfileChange }: UseWorkspac
         void refreshMetrics(user.id);
       } catch (err) {
         console.error(err);
+      } finally {
+        setProfilesLoading(false);
       }
     };
     void fetchForUser();
@@ -66,6 +75,7 @@ export function useWorkspaceProfiles({ api, user, onProfileChange }: UseWorkspac
 
   return {
     profiles,
+    profilesLoading,
     selectedProfileId,
     setSelectedProfileId,
     selectedProfile,

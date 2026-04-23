@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Pencil, Trash2, Ban, X, Check, Users } from "lucide-react";
 import { api } from "../../../lib/api";
 import { ClientUser } from "../../../lib/auth";
@@ -107,9 +106,9 @@ export default function AdminUsersPage() {
       setPendingAction(null);
       setEditingId(null);
       setEditingRole("");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      const message = err?.message || "Failed to perform action.";
+      const message = err instanceof Error ? err.message : "Failed to perform action.";
       if (pendingAction.type === 'delete' && message.includes("404") || message.includes("not found")) {
         setError("Delete endpoint not available.");
       } else {
@@ -144,7 +143,7 @@ export default function AdminUsersPage() {
         <div className="space-y-6">
 
         {error && (
-          <div className="rounded-xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
@@ -163,27 +162,12 @@ export default function AdminUsersPage() {
             ) : (
               filteredUsers.map((u) => {
                 const isEditing = editingId === u.id;
-                const hasAvatar = Boolean(u.avatarUrl) && u.avatarUrl?.toLowerCase() !== 'nope';
                 const initials = getInitials(u.userName || u.name || 'U');
                 return (
                   <div key={u.id} className="grid grid-cols-6 items-center px-4 py-3 text-sm text-slate-800">
                     <div className="flex items-center">
-                      <div className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-slate-900 text-xs font-semibold text-white">
-                        {hasAvatar ? (
-                          (u.avatarUrl!.startsWith('data:') || u.avatarUrl!.startsWith('blob:')) ? (
-                            <img src={u.avatarUrl!} alt={`${u.userName} avatar`} className="h-full w-full object-cover" />
-                          ) : (
-                            <Image
-                              src={u.avatarUrl!}
-                              alt={`${u.userName} avatar`}
-                              fill
-                              className="object-cover"
-                              unoptimized
-                            />
-                          )
-                        ) : (
-                          initials
-                        )}
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+                        {initials}
                       </div>
                     </div>
                     <div className="font-semibold text-slate-900">{u.userName}</div>
