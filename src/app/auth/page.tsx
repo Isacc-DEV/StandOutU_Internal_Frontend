@@ -1,8 +1,25 @@
 'use client';
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../../lib/api";
 import { ClientUser, saveAuth } from "../../lib/auth";
+
+function syncAuthFormValues(
+  emailRef: React.RefObject<HTMLInputElement | null>,
+  passwordRef: React.RefObject<HTMLInputElement | null>,
+  userNameRef: React.RefObject<HTMLInputElement | null>,
+  setEmail: React.Dispatch<React.SetStateAction<string>>,
+  setPassword: React.Dispatch<React.SetStateAction<string>>,
+  setUserName: React.Dispatch<React.SetStateAction<string>>,
+) {
+  const nextEmail = emailRef.current?.value ?? "";
+  const nextPassword = passwordRef.current?.value ?? "";
+  const nextUserName = userNameRef.current?.value ?? "";
+
+  setEmail((current) => (current === nextEmail ? current : nextEmail));
+  setPassword((current) => (current === nextPassword ? current : nextPassword));
+  setUserName((current) => (current === nextUserName ? current : nextUserName));
+}
 
 export default function AuthPage() {
   const router = useRouter();
@@ -13,10 +30,63 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const userNameRef = useRef<HTMLInputElement>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  const syncBrowserFilledValues = () => {
+    syncAuthFormValues(
+      emailRef,
+      passwordRef,
+      userNameRef,
+      setEmail,
+      setPassword,
+      setUserName,
+    );
+  };
+
+  useEffect(() => {
+    const delays = [0, 150, 500, 1000];
+    const timers = delays.map((delay) =>
+      window.setTimeout(() => {
+        syncAuthFormValues(
+          emailRef,
+          passwordRef,
+          userNameRef,
+          setEmail,
+          setPassword,
+          setUserName,
+        );
+      }, delay),
+    );
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [mode]);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+
+    syncBrowserFilledValues();
+
+    const formData = new FormData(e.currentTarget);
+    const submittedEmail = String(
+      formData.get(mode === "signin" ? "identifier" : "email") ?? "",
+    ).trim();
+    const submittedPassword = String(formData.get("password") ?? "");
+    const submittedUserName = String(formData.get("userName") ?? "").trim();
+
+    setEmail(submittedEmail);
+    setPassword(submittedPassword);
+    setUserName(submittedUserName);
+
+    if (!submittedEmail || !submittedPassword || (mode === "signup" && !submittedUserName)) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
     setLoading(true);
     try {
       const path = mode === "signin" ? "/auth/login" : "/auth/signup";
@@ -24,8 +94,8 @@ export default function AuthPage() {
       console.log("Submitting to", path);
       const body =
         mode === "signin"
-          ? { identifier: email, password }
-          : { email, password, userName: userName.trim() };
+          ? { identifier: submittedEmail, password: submittedPassword }
+          : { email: submittedEmail, password: submittedPassword, userName: submittedUserName };
       const res = await api(path, {
         method: "POST",
         body: JSON.stringify(body),
@@ -132,6 +202,7 @@ export default function AuthPage() {
         {/* Form Card */}
         <form 
           onSubmit={handleSubmit} 
+          onFocusCapture={syncBrowserFilledValues}
           className="w-full space-y-4 rounded-2xl border border-slate-700/80 bg-slate-800/90 backdrop-blur-sm p-8 shadow-xl shadow-slate-900/50"
         >
           {mode === "signup" && (
@@ -146,6 +217,10 @@ export default function AuthPage() {
                   </svg>
                 </div>
                 <input
+                  ref={userNameRef}
+                  name="userName"
+                  autoComplete="username"
+                  required={mode === "signup"}
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
                   placeholder="Enter your username"
@@ -166,7 +241,14 @@ export default function AuthPage() {
                 </svg>
               </div>
               <input
+                ref={emailRef}
+                name={mode === "signin" ? "identifier" : "email"}
                 type={mode === "signup" ? "email" : "text"}
+                autoComplete={mode === "signin" ? "username" : "email"}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={mode === "signin" ? "you@example.com or username" : "you@example.com"}
@@ -186,7 +268,11 @@ export default function AuthPage() {
                 </svg>
               </div>
               <input
+                ref={passwordRef}
+                name="password"
                 type={showPassword ? "text" : "password"}
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
