@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Metrics, Profile, User } from "../app/workspace/types";
-import { cleanBaseInfo } from "@/lib/resume";
+import { normalizeBaseResume } from "@/lib/resume";
 import { loadLastWorkspaceProfileId } from "@/lib/workspace/storage";
 
 type UseWorkspaceProfilesOptions = {
@@ -8,6 +8,10 @@ type UseWorkspaceProfilesOptions = {
   user: User | null;
   onProfileChange?: (profileId: string, profiles: Profile[]) => void;
 };
+
+function getAssignedManagerId(profile: Profile) {
+  return (profile.assignedManagerUserId ?? profile.createdBy ?? "").trim();
+}
 
 export function useWorkspaceProfiles({ api, user, onProfileChange }: UseWorkspaceProfilesOptions) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -49,10 +53,12 @@ export function useWorkspaceProfiles({ api, user, onProfileChange }: UseWorkspac
         const visible =
           user.role === "BIDDER"
             ? profs.filter((p) => p.assignedBidderId === user.id)
+            : user.role === "MANAGER"
+              ? profs.filter((p) => getAssignedManagerId(p) === user.id)
             : profs;
         const normalized = visible.map((p) => ({
           ...p,
-          baseInfo: cleanBaseInfo(p.baseInfo ?? {}),
+          baseResume: normalizeBaseResume(p.baseResume),
           baseAdditionalBullets: p.baseAdditionalBullets ?? {},
         }));
         setProfiles(normalized);

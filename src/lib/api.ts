@@ -19,11 +19,53 @@ export class ApiNetworkError extends Error {
   }
 }
 
+const UNAUTHORIZED_MESSAGE = 'u need to login';
+let hasHandledUnauthorized = false;
+
+export class ApiUnauthorizedError extends Error {
+  constructor(message = UNAUTHORIZED_MESSAGE) {
+    super(message);
+    this.name = 'ApiUnauthorizedError';
+  }
+}
+
 export function isApiNetworkError(error: unknown): boolean {
   if (error instanceof ApiNetworkError) return true;
   if (!error || typeof error !== 'object') return false;
   const message = (error as { message?: unknown }).message;
   return typeof message === 'string' && message.startsWith('Network error contacting API');
+}
+
+export function isApiUnauthorizedError(error: unknown): boolean {
+  if (error instanceof ApiUnauthorizedError) return true;
+  if (typeof error === 'string') {
+    return error === UNAUTHORIZED_MESSAGE || error === 'Unauthorized';
+  }
+  if (!error || typeof error !== 'object') return false;
+  const name = (error as { name?: unknown }).name;
+  if (name === 'ApiUnauthorizedError') return true;
+  const message = (error as { message?: unknown }).message;
+  return message === UNAUTHORIZED_MESSAGE || message === 'Unauthorized';
+}
+
+function handleUnauthorized() {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem('smartwork_user');
+    window.localStorage.removeItem('smartwork_token');
+  } catch (err) {
+    console.error('Failed clearing auth after 401', err);
+  }
+
+  if (!hasHandledUnauthorized) {
+    hasHandledUnauthorized = true;
+    window.alert(UNAUTHORIZED_MESSAGE);
+  }
+
+  if (window.location.pathname !== '/auth') {
+    window.location.href = '/auth';
+  }
 }
 
 function resolveApiBase(): string {
@@ -104,16 +146,8 @@ export async function api<T = unknown>(
 
   if (!res.ok) {
     if (res.status === 401) {
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.removeItem('smartwork_user');
-          localStorage.removeItem('smartwork_token');
-          window.location.href = '/auth';
-        } catch (err) {
-          console.error('Failed clearing auth after 401', err);
-        }
-      }
-      throw new Error('Unauthorized');
+      handleUnauthorized();
+      throw new ApiUnauthorizedError();
     }
     const text = await res.text();
     throw new Error(text || res.statusText);
@@ -148,12 +182,8 @@ export async function workspaceApi<T = unknown>(
   }
   if (!res.ok) {
     if (res.status === 401) {
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem('smartwork_token');
-        window.localStorage.removeItem('smartwork_user');
-        window.location.href = '/auth';
-      }
-      throw new Error('Unauthorized');
+      handleUnauthorized();
+      throw new ApiUnauthorizedError();
     }
     const text = await res.text();
     let message = text || res.statusText;

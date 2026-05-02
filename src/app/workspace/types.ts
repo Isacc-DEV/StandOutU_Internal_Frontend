@@ -17,31 +17,6 @@ export type User = {
   role: "ADMIN" | "MANAGER" | "BIDDER" | "OBSERVER";
 };
 
-export type BaseInfo = {
-  name?: { first?: string; last?: string; family?: string };
-  contact?: {
-    email?: string;
-    phone?: string;
-    phoneCode?: string;
-    phoneNumber?: string;
-    password?: string;
-  };
-  links?: Record<string, string> & { linkedin?: string };
-  location?: {
-    address?: string;
-    streetName?: string;
-    city?: string;
-    state?: string;
-    country?: string;
-    postalCode?: string;
-  };
-  career?: { jobTitle?: string; currentCompany?: string; yearsExp?: string | number; desiredSalary?: string };
-  education?: { school?: string; degree?: string; majorField?: string; graduationAt?: string };
-  workAuth?: { authorized?: boolean; needsSponsorship?: boolean };
-  preferences?: Record<string, unknown>;
-  defaultAnswers?: Record<string, string>;
-};
-
 export type BaseResume = {
   Profile?: {
     name?: string;
@@ -79,12 +54,14 @@ export type EducationEntry = NonNullable<BaseResume["education"]>[number];
 export type Profile = {
   id: string;
   displayName: string;
-  baseInfo: BaseInfo;
   baseResume?: BaseResume;
   baseAdditionalBullets?: Record<string, number>;
+  createdBy?: string | null;
+  assignedManagerUserId?: string | null;
+  assignedManagerName?: string | null;
   resumeTemplateId?: string | null;
   resumeTemplateName?: string | null;
-  assignedBidderId?: string;
+  assignedBidderId?: string | null;
 };
 
 export type ResumeTemplate = {

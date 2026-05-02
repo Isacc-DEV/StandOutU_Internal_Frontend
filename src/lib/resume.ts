@@ -1,5 +1,4 @@
 import type {
-  BaseInfo,
   BaseResume,
   WorkExperience,
   EducationEntry,
@@ -14,55 +13,6 @@ export function cleanString(val?: string | number | null) {
   if (typeof val === "number") return String(val);
   if (typeof val === "string") return val.trim();
   return "";
-}
-
-export function formatPhone(contact?: BaseInfo["contact"]) {
-  if (!contact) return "";
-  const parts = [contact.phoneCode, contact.phoneNumber].map((p) => cleanString(p)).filter(Boolean);
-  const combined = parts.join(" ").trim();
-  const fallback = cleanString(contact.phone);
-  return combined || fallback;
-}
-
-export function cleanBaseInfo(base: BaseInfo): BaseInfo {
-  const links = { ...(base?.links ?? {}) } as Record<string, string> & { linkedin?: string };
-  if (typeof links.linkedin === "string") links.linkedin = links.linkedin.trim();
-  return {
-    name: { first: cleanString(base?.name?.first), last: cleanString(base?.name?.last) },
-    contact: {
-      email: cleanString(base?.contact?.email),
-      phone: formatPhone(base?.contact),
-      phoneCode: cleanString(base?.contact?.phoneCode),
-      phoneNumber: cleanString(base?.contact?.phoneNumber),
-      password: cleanString(base?.contact?.password),
-    },
-    links,
-    location: {
-      address: cleanString(base?.location?.address),
-      city: cleanString(base?.location?.city),
-      state: cleanString(base?.location?.state),
-      country: cleanString(base?.location?.country),
-      postalCode: cleanString(base?.location?.postalCode),
-    },
-    career: {
-      jobTitle: cleanString(base?.career?.jobTitle),
-      currentCompany: cleanString(base?.career?.currentCompany),
-      yearsExp: cleanString(base?.career?.yearsExp as string | number | undefined),
-      desiredSalary: cleanString(base?.career?.desiredSalary),
-    },
-    education: {
-      school: cleanString(base?.education?.school),
-      degree: cleanString(base?.education?.degree),
-      majorField: cleanString(base?.education?.majorField),
-      graduationAt: cleanString(base?.education?.graduationAt),
-    },
-    workAuth: {
-      authorized: base?.workAuth?.authorized ?? false,
-      needsSponsorship: base?.workAuth?.needsSponsorship ?? false,
-    },
-    preferences: base?.preferences ?? {},
-    defaultAnswers: base?.defaultAnswers ?? {},
-  };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -717,7 +667,8 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
   return result;
 }
 
-export function buildResumePdfName(profileName?: string, _templateName?: string) {
+export function buildResumePdfName(profileName?: string, templateName?: string) {
+  void templateName;
   const shortId = Date.now().toString(36);
   const core = profileName ? profileName : "resume";
   const base = core || "resume";

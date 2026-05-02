@@ -8,7 +8,6 @@ import TopNav from "@/components/TopNav";
 import type {
   DesktopBridge,
   Profile,
-  BaseInfo,
   ApplicationSession,
   ApplicationPhraseResponse,
   ResumePreviewTab,
@@ -19,8 +18,6 @@ import { EMPTY_RESUME_PREVIEW } from "@/lib/constants";
 import {
   buildBulletCountDefaults,
   buildPromptCompanyTitleKeys,
-  cleanBaseInfo,
-  formatPhone,
   normalizeBaseResume,
 } from "@/lib/resume";
 import { renderResumeTemplate } from "@/lib/resumeTemplate";
@@ -88,10 +85,9 @@ const WorkspaceBrowser = dynamic(() => import("@/components/workspace/WorkspaceB
 });
 
 function buildBaseResumePreviewTab(profile?: Profile | null): ResumePreviewTab {
-  const label = profile?.displayName ? `${profile.displayName} 1` : "Resume 1";
   return {
     id: profile?.id ? `base-${profile.id}` : "base-resume",
-    label,
+    label: "Base Resume",
     kind: "base",
     profileId: profile?.id,
     resume: normalizeBaseResume(profile?.baseResume),
@@ -111,8 +107,6 @@ export default function Page() {
   const [checkEnabled, setCheckEnabled] = useState(false);
   const [session, setSession] = useState<ApplicationSession | null>(null);
   const [loadingAction, setLoadingAction] = useState<string>("");
-  const [showBaseInfo, setShowBaseInfo] = useState(false);
-  const [baseInfoView, setBaseInfoView] = useState<BaseInfo>(() => cleanBaseInfo({}));
   const [jdPreviewOpen, setJdPreviewOpen] = useState(false);
   const [jdDraft, setJdDraft] = useState("");
   const [jdCaptureError, setJdCaptureError] = useState("");
@@ -214,11 +208,9 @@ export default function Page() {
     ) => {
       const preserveNavigation = Boolean(options?.preserveNavigation);
       const profile = profilesList.find((item) => item.id === profileId);
-      const baseResumeTab = profile ? buildBaseResumePreviewTab(profile) : null;
 
       setSession(null);
       setCheckEnabled(false);
-      setShowBaseInfo(false);
       if (!preserveNavigation) {
         setNavigationStarted(false);
         setLoadedUrl("");
@@ -230,24 +222,22 @@ export default function Page() {
         setLoadingTabId(null);
       }
 
-      setBaseInfoView(cleanBaseInfo(profile?.baseInfo ?? {}));
-
       setTailorLoading(false);
       setTailorError("");
       setTailorPdfLoading(false);
       setTailorPdfError("");
       if (profileId) {
         setProfileResumeTabs((prev) => {
-          if (!baseResumeTab) return prev;
           const existingTabs = prev[profileId] ?? [];
           const generatedTabs = existingTabs.filter((tab) => tab.kind === "generated");
-          return { ...prev, [profileId]: [baseResumeTab, ...generatedTabs] };
+          return { ...prev, [profileId]: generatedTabs };
         });
         setProfileActiveResumeTabIds((prev) => {
-          if (!baseResumeTab) return prev;
           const currentActive = prev[profileId] ?? null;
-          const shouldKeepActive = Boolean(currentActive && currentActive !== baseResumeTab.id);
-          return { ...prev, [profileId]: shouldKeepActive ? currentActive : baseResumeTab.id };
+          if (currentActive !== "base-resume" && !currentActive?.startsWith("base-")) {
+            return prev;
+          }
+          return { ...prev, [profileId]: null };
         });
       }
       setJdPreviewOpen(false);
@@ -376,19 +366,25 @@ export default function Page() {
     });
   }, [baseResumeView]);
   const resumePreviewTabs = useMemo(
-    () => profileResumeTabs[selectedProfileId] ?? [],
+    () => (profileResumeTabs[selectedProfileId] ?? []).filter((tab) => tab.kind === "generated"),
     [profileResumeTabs, selectedProfileId]
+  );
+  const baseResumePreviewTab = useMemo(
+    () => (selectedProfile ? buildBaseResumePreviewTab(selectedProfile) : null),
+    [selectedProfile]
   );
   const activeResumeTabId = useMemo(
     () => profileActiveResumeTabIds[selectedProfileId] ?? null,
     [profileActiveResumeTabIds, selectedProfileId]
   );
   const activeResumeTab = useMemo(() => {
-    if (!resumePreviewTabs.length) return null;
+    if (!resumePreviewTabs.length) return baseResumePreviewTab;
     return (
       resumePreviewTabs.find((tab) => tab.id === activeResumeTabId) ?? resumePreviewTabs[0]
     );
-  }, [activeResumeTabId, resumePreviewTabs]);
+  }, [activeResumeTabId, baseResumePreviewTab, resumePreviewTabs]);
+  const activeResumeTabIdForView =
+    activeResumeTab?.kind === "generated" ? activeResumeTab.id : null;
   const activeResumePreviewHtml = useMemo(() => {
     if (!selectedTemplate || !activeResumeTab) return "";
     return renderResumeTemplate(selectedTemplate.html, activeResumeTab.resume);
@@ -421,8 +417,6 @@ export default function Page() {
     activeJobDescription: activeResumeTab?.jd ?? null,
   });
 
-  const baseDraft = cleanBaseInfo(baseInfoView);
-  const phoneCombined = formatPhone(baseDraft.contact) || "N/A";
   const normalizedCheckPhrases = useMemo(() => {
     const merged = new Map<string, string>();
     applicationPhrases.forEach((phrase) => {
@@ -674,18 +668,20 @@ export default function Page() {
       removeChatSession(buildAnswerSessionKey(selectedProfileId, tabId));
       setProfileResumeTabs((prev) => {
         const currentTabs = prev[selectedProfileId] ?? [];
-        const nextTabs = currentTabs.filter((tab) => tab.id !== tabId);
-        const fallbackTabs = nextTabs.length
-          ? nextTabs
-          : [buildBaseResumePreviewTab(selectedProfile)];
+        const nextTabs = currentTabs.filter(
+          (tab) => tab.kind === "generated" && tab.id !== tabId
+        );
         setProfileActiveResumeTabIds((activePrev) => {
-          if ((activePrev[selectedProfileId] ?? null) !== tabId) return activePrev;
-          return { ...activePrev, [selectedProfileId]: fallbackTabs[0]?.id ?? null };
+          const currentActive = activePrev[selectedProfileId] ?? null;
+          if (currentActive !== tabId && nextTabs.some((tab) => tab.id === currentActive)) {
+            return activePrev;
+          }
+          return { ...activePrev, [selectedProfileId]: nextTabs[0]?.id ?? null };
         });
-        return { ...prev, [selectedProfileId]: fallbackTabs };
+        return { ...prev, [selectedProfileId]: nextTabs };
       });
     },
-    [removeChatSession, selectedProfile, selectedProfileId]
+    [removeChatSession, selectedProfileId]
   );
 
   useEffect(() => {
@@ -1045,13 +1041,17 @@ export default function Page() {
     setJdPreviewOpen,
     setResumePreviewTabs: (value) => {
       if (!selectedProfileId) return;
-      setProfileResumeTabs((prev) => ({
-        ...prev,
-        [selectedProfileId]:
-          typeof value === "function"
-            ? value(prev[selectedProfileId] ?? [buildBaseResumePreviewTab(selectedProfile)])
-            : value,
-      }));
+      setProfileResumeTabs((prev) => {
+        const currentGeneratedTabs = (prev[selectedProfileId] ?? []).filter(
+          (tab) => tab.kind === "generated"
+        );
+        const nextTabs =
+          typeof value === "function" ? value(currentGeneratedTabs) : value;
+        return {
+          ...prev,
+          [selectedProfileId]: nextTabs.filter((tab) => tab.kind === "generated"),
+        };
+      });
     },
     setTailorError,
     setTailorLoading,
@@ -1125,17 +1125,13 @@ export default function Page() {
                 onAutofill={() => {}}
                 autofillDisabled
                 autofillActive={false}
-                showBaseInfo={showBaseInfo}
-                onToggleBaseInfo={() => setShowBaseInfo((v) => !v)}
-                baseDraft={baseDraft}
-                phoneCombined={phoneCombined}
                 baseResume={baseResumeView}
               />
               <WorkspaceBrowser
                 selectedProfile={selectedProfile}
                 resumeTabs={resumePreviewTabs}
                 activeResumeTab={activeResumeTab}
-                activeResumeTabId={activeResumeTabId}
+                activeResumeTabId={activeResumeTabIdForView}
                 onSelectResumeTab={handleSelectResumeTab}
                 onCloseResumeTab={handleCloseResumeTab}
                 onDownloadPdf={handleDownloadTailoredPdf}

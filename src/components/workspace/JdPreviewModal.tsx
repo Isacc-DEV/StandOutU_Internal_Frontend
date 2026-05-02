@@ -76,60 +76,6 @@ export default function JdPreviewModal({
               {jdCaptureError}
             </div>
           ) : null}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                Bullet counts
-              </p>
-              <p className="text-xs text-slate-500">Experience row and desired new bullet count</p>
-            </div>
-            <div className="mt-3 space-y-2">
-              {experienceLabels.length ? (
-                experienceLabels.map((experienceLabel, index) => {
-                  const roleLabel = (baseResumeView.workExperience?.[index]?.roleTitle ?? "").trim();
-                  const displayLabel = [experienceLabel, roleLabel || `Role ${index + 1}`]
-                    .filter(Boolean)
-                    .join(" - ");
-                  const fallbackCount = index === 0 ? 3 : 1;
-                  const countKey = String(index);
-                  const currentValue =
-                    typeof bulletCountByCompany[countKey] === "number"
-                      ? bulletCountByCompany[countKey]
-                      : fallbackCount;
-                  return (
-                    <label
-                      key={`${experienceLabel}-${index}`}
-                      className="flex items-center justify-between gap-3 text-xs text-slate-700"
-                    >
-                      <span className="flex-1 truncate">{displayLabel}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
-                        inputMode="numeric"
-                        value={currentValue}
-                        onChange={(event) => {
-                          const nextValue = event.target.valueAsNumber;
-                          const safeValue = Number.isFinite(nextValue)
-                            ? Math.max(0, nextValue)
-                            : 0;
-                          onBulletCountChange((prev) => ({
-                            ...prev,
-                            [countKey]: safeValue,
-                          }));
-                        }}
-                        className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 shadow-sm outline-none focus:ring-1 focus:ring-slate-300"
-                      />
-                    </label>
-                  );
-                })
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                  No work experience entries found.
-                </div>
-              )}
-            </div>
-          </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"

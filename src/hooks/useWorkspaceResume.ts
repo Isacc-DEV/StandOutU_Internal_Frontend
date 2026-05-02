@@ -110,7 +110,7 @@ export function useWorkspaceResume({
         const nextIndex = prev.filter((tab) => tab.kind === "generated").length + 1;
         const nextTab: ResumePreviewTab = {
           id: nextTabId,
-          label: `${profileDisplayName || "Resume"} ${nextIndex + 1}`,
+          label: `${profileDisplayName || "Resume"} ${nextIndex}`,
           kind: "generated",
           profileId: selectedProfileIdRef.current,
           resume,

@@ -27,6 +27,27 @@ const parseFullName = (fullName: string) => {
   };
 };
 
+const parseLocation = (rawLocation: string) => {
+  const parts = rawLocation
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return { city: "", state: "", country: "" };
+  }
+  if (parts.length === 1) {
+    return { city: parts[0], state: "", country: "" };
+  }
+  if (parts.length === 2) {
+    return { city: parts[0], state: parts[1], country: "" };
+  }
+  return {
+    city: parts[0],
+    state: parts[1],
+    country: parts.slice(2).join(", "),
+  };
+};
+
 const buildResumeSnapshot = (baseResume?: BaseResume): ResumeSnapshot | null => {
   if (!baseResume) return null;
   return {
@@ -46,32 +67,23 @@ const buildResumeSnapshot = (baseResume?: BaseResume): ResumeSnapshot | null => 
 };
 
 export function buildAutofillProfile(profile: WorkspaceProfile): AutofillProfile {
-  const baseInfo = profile.baseInfo ?? {};
-  const contact = baseInfo.contact ?? {};
-  const links = baseInfo.links ?? {};
-  const location = baseInfo.location ?? {};
-  const career = baseInfo.career ?? {};
-  const educationInfo = baseInfo.education ?? {};
-  const preferences = baseInfo.preferences ?? {};
-  const defaultAnswers = baseInfo.defaultAnswers ?? {};
-  const contactPassword = pickText(contact.password);
-
   const resumeProfile = profile.baseResume?.Profile ?? {};
   const resumeContact = resumeProfile.contact ?? {};
 
-  const nameFromResume = pickText(resumeProfile.name);
-  const nameParts = parseFullName(pickText(profile.displayName, nameFromResume));
-
-  const firstName = pickText(baseInfo.name?.first, nameParts.first);
-  const lastName = pickText(baseInfo.name?.last, nameParts.last);
+  const resolvedName = pickText(resumeProfile.name, profile.displayName);
+  const nameParts = parseFullName(resolvedName);
+  const firstName = pickText(nameParts.first);
   const middleName = pickText(nameParts.middle);
-  const familyName = pickText(baseInfo.name?.family, lastName);
+  const lastName = pickText(nameParts.last);
+  const familyName = pickText(lastName);
+  const locationText = pickText(resumeContact.location);
+  const parsedLocation = parseLocation(locationText);
 
-  const rawPhone = pickText(contact.phone, resumeContact.phone);
-  let countryCode = pickText(contact.phoneCode);
-  let number = pickText(contact.phoneNumber);
+  const rawPhone = pickText(resumeContact.phone);
+  let countryCode = "";
+  let number = "";
   if (!number && rawPhone) {
-    if (!countryCode && rawPhone.startsWith("+")) {
+    if (rawPhone.startsWith("+")) {
       const parts = rawPhone.split(/\s+/);
       countryCode = parts[0];
       number = parts.slice(1).join(" ");
@@ -79,14 +91,6 @@ export function buildAutofillProfile(profile: WorkspaceProfile): AutofillProfile
       number = rawPhone;
     }
   }
-
-  const getLink = (...keys: string[]) => {
-    for (const key of keys) {
-      const value = (links as Record<string, string | undefined>)[key];
-      if (value && value.trim()) return value.trim();
-    }
-    return "";
-  };
 
   const resumeSnapshot = buildResumeSnapshot(profile.baseResume);
 
@@ -101,22 +105,6 @@ export function buildAutofillProfile(profile: WorkspaceProfile): AutofillProfile
     endDate: pickText(entry.date),
     current: false,
   }));
-
-  const hasBaseInfoEducation = Boolean(
-    pickText(educationInfo.school, educationInfo.degree, educationInfo.majorField, educationInfo.graduationAt)
-  );
-  if (education.length === 0 && hasBaseInfoEducation) {
-    education.push({
-      id: "base-info-edu",
-      school: pickText(educationInfo.school),
-      degree: pickText(educationInfo.degree),
-      major: pickText(educationInfo.majorField),
-      gpa: "",
-      startDate: "",
-      endDate: pickText(educationInfo.graduationAt),
-      current: false,
-    });
-  }
 
   const resumeWork = profile.baseResume?.workExperience ?? [];
   const workExperience = resumeWork.map((entry, index) => {
@@ -133,42 +121,40 @@ export function buildAutofillProfile(profile: WorkspaceProfile): AutofillProfile
     };
   });
 
-  const desiredSalary = pickText(career.desiredSalary);
-
   return {
     id: profile.id,
-    name: pickText(profile.displayName, `${firstName} ${lastName}`.trim()),
+    name: pickText(profile.displayName, resolvedName, `${firstName} ${lastName}`.trim()),
     personalInfo: {
       prefix: "",
       firstName,
       middleName,
       lastName,
       familyName,
-      address: pickText(location.address, resumeContact.location),
-      streetName: pickText(location.streetName, location.address, resumeContact.location),
-      city: pickText(location.city),
-      state: pickText(location.state),
-      postalCode: pickText(location.postalCode),
-      country: pickText(location.country),
-      email: pickText(contact.email, resumeContact.email),
-      password: contactPassword,
+      address: locationText,
+      streetName: locationText,
+      city: parsedLocation.city,
+      state: parsedLocation.state,
+      postalCode: "",
+      country: parsedLocation.country,
+      email: pickText(resumeContact.email),
+      password: "",
       phone: {
         countryCode,
         number,
       },
-      nationality: pickText(location.country),
-      linkedInURL: pickText(getLink("linkedin"), resumeContact.linkedin),
-      twitterURL: pickText(getLink("twitter"), getLink("x")),
-      githubURL: pickText(getLink("github"), getLink("gitHub")),
-      website: pickText(getLink("website"), getLink("portfolio")),
+      nationality: parsedLocation.country,
+      linkedInURL: pickText(resumeContact.linkedin),
+      twitterURL: "",
+      githubURL: "",
+      website: "",
       gender: "",
     },
     additionalInfo: {
       currentSalary: "",
-      expectedSalary: desiredSalary,
-      noticePeriod: pickText(preferences.noticePeriod, preferences.notice_period, preferences.notice),
-      earliestAvailableDate: pickText(preferences.earliestAvailableDate),
-      coverLetter: pickText(defaultAnswers.coverLetter, defaultAnswers["cover_letter"], defaultAnswers["coverletter"]),
+      expectedSalary: "",
+      noticePeriod: "",
+      earliestAvailableDate: "",
+      coverLetter: "",
       genderIdentity: "",
       raceEthnicity: "",
       sexualOrientation: "",
